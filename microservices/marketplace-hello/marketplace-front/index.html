@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Marketplace</title>
+</head>
+<body>
+  <h1 id="msg">Loading...</h1>
+  <script>
+    fetch('http://localhost:8030/mic3/marketplace/hello')
+      .then(r => r.text())
+      .then(t => document.getElementById('msg').textContent = t)
+      .catch(e => document.getElementById('msg').textContent = 'Error: ' + e);
+  </script>
+</body>
+</html>
