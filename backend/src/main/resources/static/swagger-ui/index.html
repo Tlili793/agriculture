@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Agriculture Ecosystem - Swagger UI</title>
+  <link rel="stylesheet" type="text/css" href="/webjars/swagger-ui/swagger-ui.css" />
+  <link rel="icon" type="image/png" href="/webjars/swagger-ui/favicon-32x32.png" sizes="32x32" />
+  <link rel="icon" type="image/png" href="/webjars/swagger-ui/favicon-16x16.png" sizes="16x16" />
+  <style>
+    html {
+      box-sizing: border-box;
+      overflow: -moz-scrollbars-vertical;
+      overflow-y: scroll;
+    }
+    *, *:before, *:after {
+      box-sizing: inherit;
+    }
+    body {
+      margin:0;
+      background: #fafafa;
+    }
+    .top-bar-brand {
+      background: #2e7d32;
+      color: white;
+      padding: 12px 24px;
+      font-family: sans-serif;
+      font-size: 18px;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .top-bar-brand span {
+      font-size: 14px;
+      font-weight: normal;
+      opacity: 0.9;
+    }
+  </style>
+</head>
+<body>
+  <div class="top-bar-brand">
+    <div>🌱 Agriculture Microservices Ecosystem</div>
+    <span>Unified API Documentation</span>
+  </div>
+  <div id="swagger-ui"></div>
+
+  <script src="/webjars/swagger-ui/swagger-ui-bundle.js" charset="UTF-8"></script>
+  <script src="/webjars/swagger-ui/swagger-ui-standalone-preset.js" charset="UTF-8"></script>
+  <script>
+    window.onload = function() {
+      window.ui = SwaggerUIBundle({
+        urls: [
+          { name: "Refrigerator Service", url: "/services/refrigerator/v3/api-docs" },
+          { name: "Ordering Service", url: "/services/ordering/v3/api-docs" },
+          { name: "Reclamation Service", url: "/services/reclamation/v3/api-docs" },
+          { name: "Logistics Service", url: "/services/logistics/v3/api-docs" },
+          { name: "Marketplace Service", url: "/services/marketplace/v3/api-docs" }
+        ],
+        "urls.primaryName": "Refrigerator Service",
+        dom_id: '#swagger-ui',
+        deepLinking: true,
+        presets: [
+          SwaggerUIBundle.presets.apis,
+          SwaggerUIStandalonePreset
+        ],
+        plugins: [
+          SwaggerUIBundle.plugins.DownloadUrl
+        ],
+        layout: "StandaloneLayout"
+      });
+    };
+  </script>
+</body>
+</html>
+

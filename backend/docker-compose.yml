@@ -1,0 +1,137 @@
+name: agriculture
+
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: agriculture-postgres
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: keycloak
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  refrigerator-postgres:
+    image: postgres:16-alpine
+    container_name: agriculture-refrigerator-postgres
+    environment:
+      POSTGRES_DB: refrigerator
+      POSTGRES_USER: refrigerator
+      POSTGRES_PASSWORD: refrigerator
+    volumes:
+      - refrigerator-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U refrigerator -d refrigerator"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.4.0
+    container_name: agriculture-keycloak
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME: http://keycloak.localhost:8080
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+    networks:
+      default:
+        aliases:
+          - keycloak.localhost
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/9000'"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    restart: unless-stopped
+
+  eureka:
+    build:
+      context: ./eureka-server
+      dockerfile: Dockerfile
+    container_name: agriculture-eureka
+    ports:
+      - "8761:8761"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8761/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    restart: unless-stopped
+
+  refrigerator-service:
+    build:
+      context: ./refrigerator-service
+      dockerfile: Dockerfile
+    container_name: agriculture-refrigerator-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://refrigerator-postgres:5432/refrigerator
+      SPRING_DATASOURCE_USERNAME: refrigerator
+      SPRING_DATASOURCE_PASSWORD: refrigerator
+      EUREKA_SERVER_URL: http://eureka:8761/eureka
+      EUREKA_INSTANCE_HOST: refrigerator-service
+    ports:
+      - "8083:8083"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8083/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    depends_on:
+      refrigerator-postgres:
+        condition: service_healthy
+      eureka:
+        condition: service_healthy
+    restart: unless-stopped
+
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agriculture-gateway
+    environment:
+      KEYCLOAK_REALM_URL: http://keycloak.localhost:8080/realms/agriculture
+      KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/agriculture/protocol/openid-connect/certs
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-ijvASWmMTiVGn4MTygLhEI8IKLLyT9epLxAAb9yKBZG3g8rEWWla1whqJxxgL1nUH58USRk90lScrOXuEJpXnC}
+      AGRICULTURE_SERVICE_URI: ${AGRICULTURE_SERVICE_URI:-http://host.docker.internal:8082}
+      EUREKA_SERVER_URL: http://eureka:8761/eureka
+    ports:
+      - "8081:8081"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      keycloak:
+        condition: service_healthy
+      eureka:
+        condition: service_healthy
+      refrigerator-service:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  refrigerator-postgres-data:

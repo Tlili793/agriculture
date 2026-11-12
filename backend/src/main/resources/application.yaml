@@ -1,0 +1,110 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: gateway
+
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+            - id: refrigerator_service_route
+              uri: lb://REFRIGERATOR-SERVICE
+              order: -1
+              predicates:
+                - Path=/refrigerator/**
+            - id: ordering_service_route
+              uri: lb://ORDERING-SERVICE
+              order: -1
+              predicates:
+                - Path=/api/orders/**
+            - id: reclamation_service_route
+              uri: lb://RECLAMATION-SERVICE
+              order: -1
+              predicates:
+                - Path=/api/reclamations/**
+            - id: logistics_service_route
+              uri: lb://LOGISTICS-SERVICE
+              order: -1
+              predicates:
+                - Path=/api/logistics/**,/api/deliveries/**,/api/warehouses/**
+            - id: marketplace_service_route
+              uri: lb://MARKETPLACE
+              order: -1
+              predicates:
+                - Path=/api/marketplace/**
+              filters:
+                - RewritePath=/api/marketplace/(?<segment>.*),/mic3/marketplace/${segment}
+
+            # ── Swagger / OpenAPI doc proxies ──
+            - id: refrigerator_service_docs
+              uri: lb://REFRIGERATOR-SERVICE
+              predicates:
+                - Path=/services/refrigerator/**
+              filters:
+                - RewritePath=/services/refrigerator/(?<segment>.*),/${segment}
+            - id: ordering_service_docs
+              uri: lb://ORDERING-SERVICE
+              predicates:
+                - Path=/services/ordering/**
+              filters:
+                - RewritePath=/services/ordering/(?<segment>.*),/${segment}
+            - id: reclamation_service_docs
+              uri: lb://RECLAMATION-SERVICE
+              predicates:
+                - Path=/services/reclamation/**
+              filters:
+                - RewritePath=/services/reclamation/(?<segment>.*),/${segment}
+            - id: logistics_service_docs
+              uri: lb://LOGISTICS-SERVICE
+              predicates:
+                - Path=/services/logistics/**
+              filters:
+                - RewritePath=/services/logistics/(?<segment>.*),/${segment}
+            - id: marketplace_service_docs
+              uri: lb://MARKETPLACE
+              predicates:
+                - Path=/services/marketplace/**
+              filters:
+                - RewritePath=/services/marketplace/(?<segment>.*),/${segment}
+
+            - id: agriculture_service_route
+              uri: ${AGRICULTURE_SERVICE_URI:http://localhost:8082}
+              predicates:
+                - Path=/api/**
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: "${KEYCLOAK_JWK_SET_URI:${KEYCLOAK_REALM_URL:http://localhost:8080/realms/agriculture}/protocol/openid-connect/certs}"
+      client:
+        provider:
+          keycloak:
+            authorization-uri: "${KEYCLOAK_AUTHORIZATION_URI:${KEYCLOAK_REALM_URL:http://localhost:8080/realms/agriculture}/protocol/openid-connect/auth}"
+            token-uri: "${KEYCLOAK_TOKEN_URI:${KEYCLOAK_REALM_URL:http://localhost:8080/realms/agriculture}/protocol/openid-connect/token}"
+            user-info-uri: "${KEYCLOAK_USER_INFO_URI:${KEYCLOAK_REALM_URL:http://localhost:8080/realms/agriculture}/protocol/openid-connect/userinfo}"
+            jwk-set-uri: "${KEYCLOAK_JWK_SET_URI:${KEYCLOAK_REALM_URL:http://localhost:8080/realms/agriculture}/protocol/openid-connect/certs}"
+            user-name-attribute: preferred_username
+        registration:
+          keycloak:
+            provider: keycloak
+            client-id: gateway-client
+            client-secret: ${KEYCLOAK_CLIENT_SECRET:ijvASWmMTiVGn4MTygLhEI8IKLLyT9epLxAAb9yKBZG3g8rEWWla1whqJxxgL1nUH58USRk90lScrOXuEJpXnC}
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+            scope:
+              - openid
+              - profile
+              - email
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_SERVER_URL:http://localhost:8761/eureka}
+    registry-fetch-interval-seconds: 5
+  instance:
+    prefer-ip-address: false
+    lease-renewal-interval-in-seconds: 10
