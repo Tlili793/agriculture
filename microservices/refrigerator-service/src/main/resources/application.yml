@@ -6,9 +6,14 @@ spring:
     name: refrigerator-service
 
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5433/refrigerator}
-    username: ${SPRING_DATASOURCE_USERNAME:refrigerator}
-    password: ${SPRING_DATASOURCE_PASSWORD:refrigerator}
+    url: ${DATABASE_URL:jdbc:h2:file:./data/refrigeratordb;MODE=PostgreSQL;NON_KEYWORDS=YEAR,MONTH}
+    driver-class-name: org.h2.Driver
+    username: ${DATABASE_USERNAME:sa}
+    password: ${DATABASE_PASSWORD:}
+
+  h2:
+    console:
+      enabled: ${H2_CONSOLE_ENABLED:false}
 
   jpa:
     hibernate:

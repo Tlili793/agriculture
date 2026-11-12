@@ -18,6 +18,8 @@ WORKDIR /app
 
 COPY --from=build /build/target/refrigerator-service-0.0.1-SNAPSHOT.jar app.jar
 
+RUN mkdir -p /app/data && chown -R app:app /app
+
 USER app
 
 EXPOSE 8083

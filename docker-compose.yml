@@ -18,21 +18,6 @@ services:
       retries: 20
     restart: unless-stopped
 
-  refrigerator-postgres:
-    image: postgres:16-alpine
-    container_name: agriculture-refrigerator-postgres
-    environment:
-      POSTGRES_DB: refrigerator
-      POSTGRES_USER: refrigerator
-      POSTGRES_PASSWORD: refrigerator
-    volumes:
-      - refrigerator-postgres-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U refrigerator -d refrigerator"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-    restart: unless-stopped
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.4.0
@@ -107,13 +92,14 @@ services:
       dockerfile: Dockerfile
     container_name: agriculture-refrigerator-service
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://refrigerator-postgres:5432/refrigerator
-      SPRING_DATASOURCE_USERNAME: refrigerator
-      SPRING_DATASOURCE_PASSWORD: refrigerator
+      DATABASE_URL: jdbc:h2:file:/app/data/refrigeratordb;MODE=PostgreSQL;NON_KEYWORDS=YEAR,MONTH
+      H2_CONSOLE_ENABLED: "false"
       EUREKA_SERVER_URL: http://eureka:8761/eureka
       EUREKA_INSTANCE_HOST: refrigerator-service
     ports:
       - "8083:8083"
+    volumes:
+      - refrigerator-data:/app/data
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8083/actuator/health | grep -q UP"]
       interval: 10s
@@ -121,8 +107,6 @@ services:
       retries: 20
       start_period: 30s
     depends_on:
-      refrigerator-postgres:
-        condition: service_healthy
       eureka:
         condition: service_healthy
     restart: unless-stopped
@@ -284,7 +268,7 @@ services:
 
 volumes:
   postgres-data:
-  refrigerator-postgres-data:
+  refrigerator-data:
   rabbitmq-data:
   reclamation-data:
   logistics-data:
