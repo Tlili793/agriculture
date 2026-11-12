@@ -1,0 +1,6 @@
+com/workshop/refrigerator/service/VegetableServiceTest.class
+com/workshop/refrigerator/service/MealServiceTest.class
+com/workshop/refrigerator/service/FruitServiceTest.class
+com/workshop/refrigerator/controller/RefrigeratorApiIntegrationTest.class
+com/workshop/refrigerator/service/BudgetServiceTest.class
+com/workshop/refrigerator/RefrigeratorServiceApplicationTests.class

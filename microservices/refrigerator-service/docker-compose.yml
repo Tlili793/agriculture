@@ -1,0 +1,40 @@
+name: refrigerator-service
+
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: refrigerator-postgres
+    environment:
+      POSTGRES_DB: refrigerator
+      POSTGRES_USER: refrigerator
+      POSTGRES_PASSWORD: refrigerator
+    ports:
+      - "5433:5432"
+    volumes:
+      - refrigerator-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U refrigerator -d refrigerator"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: refrigerator-app
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/refrigerator
+      SPRING_DATASOURCE_USERNAME: refrigerator
+      SPRING_DATASOURCE_PASSWORD: refrigerator
+    ports:
+      - "8083:8083"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  refrigerator-postgres-data:

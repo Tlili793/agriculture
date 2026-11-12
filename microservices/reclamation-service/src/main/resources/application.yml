@@ -1,0 +1,40 @@
+server:
+  port: 8086
+
+spring:
+  application:
+    name: reclamation-service
+  # Config Server is optional: the service still starts if it is down
+  config:
+    import: "optional:configserver:http://localhost:8888"
+
+  datasource:
+    # file mode so data survives a restart; use jdbc:h2:mem:reclamationdb for tests
+    url: jdbc:h2:file:./data/reclamationdb
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+  h2:
+    console:
+      enabled: true        # http://localhost:8086/h2-console
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+  instance:
+    prefer-ip-address: true
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

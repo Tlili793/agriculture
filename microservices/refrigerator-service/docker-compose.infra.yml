@@ -1,0 +1,24 @@
+name: refrigerator-service
+
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: refrigerator-postgres
+    environment:
+      POSTGRES_DB: refrigerator
+      POSTGRES_USER: refrigerator
+      POSTGRES_PASSWORD: refrigerator
+    ports:
+      - "5433:5432"
+    volumes:
+      - refrigerator-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U refrigerator -d refrigerator"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+volumes:
+  refrigerator-postgres-data:
