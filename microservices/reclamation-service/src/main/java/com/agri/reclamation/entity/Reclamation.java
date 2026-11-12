@@ -3,6 +3,7 @@ package com.agri.reclamation.entity;
 import jakarta.persistence.*;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Entity
 public class Reclamation {
@@ -11,7 +12,7 @@ public class Reclamation {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    private Long consumerId;   // who complains (user id from MS1)
+    private UUID userId;       // who complains (Keycloak user id)
     private Long orderId;      // which order (lives in MS2 Ordering, so only the id)
 
     private String subject;
@@ -34,8 +35,8 @@ public class Reclamation {
     }
 
     public Long getId() { return id; }
-    public Long getConsumerId() { return consumerId; }
-    public void setConsumerId(Long consumerId) { this.consumerId = consumerId; }
+    public UUID getUserId() { return userId; }
+    public void setUserId(UUID userId) { this.userId = userId; }
     public Long getOrderId() { return orderId; }
     public void setOrderId(Long orderId) { this.orderId = orderId; }
     public String getSubject() { return subject; }

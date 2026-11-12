@@ -1,9 +1,10 @@
 import { useAuth } from '../auth/LoginController';
 import RefrigeratorPanel from '../components/RefrigeratorPanel';
 import OrderingPanel from '../components/OrderingPanel';
+import ReclamationPanel from '../components/ReclamationPanel';
 
 export default function WelcomePage() {
-  const { username, name, email, token, logout } = useAuth();
+  const { username, name, email, roles, token, logout } = useAuth();
   const displayName = name || username;
 
   return (
@@ -22,11 +23,16 @@ export default function WelcomePage() {
             <dt>Email</dt>
             <dd>{email ?? '-'}</dd>
           </div>
+          <div>
+            <dt>Roles</dt>
+            <dd>{roles.length ? roles.join(', ') : '-'}</dd>
+          </div>
         </dl>
 
         <div className="panel-grid">
           <RefrigeratorPanel />
           <OrderingPanel />
+          <ReclamationPanel />
         </div>
 
         <details>

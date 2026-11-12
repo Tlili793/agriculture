@@ -9,6 +9,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/reclamations")
@@ -36,9 +37,9 @@ public class ReclamationController {
         return service.findById(id);
     }
 
-    @GetMapping("/consumer/{consumerId}")                     // 200
-    public List<Reclamation> findByConsumer(@PathVariable Long consumerId) {
-        return service.findByConsumer(consumerId);
+    @GetMapping("/user/{userId}")                             // 200
+    public List<Reclamation> findByUser(@PathVariable UUID userId) {
+        return service.findByUser(userId);
     }
 
     @PutMapping("/{id}/status")                               // 200, 404 or 409

@@ -67,18 +67,24 @@ export function LoginController({ children }) {
   }, [status]);
 
   const value = useMemo(
-    () => ({
-      keycloak,
-      authenticated: status === 'authenticated',
-      token,
-      username: keycloak.tokenParsed?.preferred_username,
-      name: keycloak.tokenParsed?.name,
-      email: keycloak.tokenParsed?.email,
-      logout: () =>
-        keycloak.logout({
-          redirectUri: window.location.origin,
-        }),
-    }),
+    () => {
+      const roles = keycloak.tokenParsed?.realm_access?.roles ?? [];
+
+      return {
+        keycloak,
+        authenticated: status === 'authenticated',
+        token,
+        username: keycloak.tokenParsed?.preferred_username,
+        name: keycloak.tokenParsed?.name,
+        email: keycloak.tokenParsed?.email,
+        roles,
+        isAdmin: roles.includes('ADMIN'),
+        logout: () =>
+          keycloak.logout({
+            redirectUri: window.location.origin,
+          }),
+      };
+    },
     [status, token],
   );
 

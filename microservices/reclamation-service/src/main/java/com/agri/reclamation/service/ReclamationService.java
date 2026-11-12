@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.UUID;
 
 @Service
 public class ReclamationService {
@@ -24,7 +25,7 @@ public class ReclamationService {
         // SESSION 6 (sync): call Ordering with OpenFeign -> GET /api/orders/{orderId}
         //                   to check that the order exists before saving.
         Reclamation r = new Reclamation();
-        r.setConsumerId(req.consumerId());
+        r.setUserId(req.userId());
         r.setOrderId(req.orderId());
         r.setSubject(req.subject());
         r.setDescription(req.description());
@@ -35,8 +36,8 @@ public class ReclamationService {
         return repository.findAll();
     }
 
-    public List<Reclamation> findByConsumer(Long consumerId) {
-        return repository.findByConsumerId(consumerId);
+    public List<Reclamation> findByUser(UUID userId) {
+        return repository.findByUserId(userId);
     }
 
     public Reclamation findById(Long id) {

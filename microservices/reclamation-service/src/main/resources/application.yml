@@ -1,18 +1,18 @@
 server:
-  port: 8086
+  port: ${PORT:8086}
 
 spring:
   application:
     name: reclamation-service
   # Config Server is optional: the service still starts if it is down
   config:
-    import: "optional:configserver:http://localhost:8888"
+    import: "optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}"
 
   datasource:
     # file mode so data survives a restart; use jdbc:h2:mem:reclamationdb for tests
-    url: jdbc:h2:file:./data/reclamationdb
-    username: sa
-    password:
+    url: ${DATABASE_URL:jdbc:h2:file:./data/reclamationdb}
+    username: ${DATABASE_USERNAME:sa}
+    password: ${DATABASE_PASSWORD:}
     driver-class-name: org.h2.Driver
   jpa:
     hibernate:
@@ -20,14 +20,15 @@ spring:
     show-sql: true
   h2:
     console:
-      enabled: true        # http://localhost:8086/h2-console
+      enabled: ${H2_CONSOLE_ENABLED:true}        # http://localhost:8086/h2-console
 
 eureka:
   client:
     service-url:
-      defaultZone: http://localhost:8761/eureka/
+      defaultZone: ${EUREKA_SERVER_URL:http://localhost:8761/eureka}
   instance:
-    prefer-ip-address: true
+    prefer-ip-address: ${EUREKA_PREFER_IP_ADDRESS:true}
+    hostname: ${EUREKA_INSTANCE_HOST:localhost}
 
 springdoc:
   swagger-ui:

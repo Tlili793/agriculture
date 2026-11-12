@@ -150,6 +150,32 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  reclamation-service:
+    build:
+      context: ./microservices/reclamation-service
+      dockerfile: Dockerfile
+    container_name: agriculture-reclamation-service
+    environment:
+      EUREKA_SERVER_URL: http://eureka:8761/eureka
+      EUREKA_INSTANCE_HOST: reclamation-service
+      EUREKA_PREFER_IP_ADDRESS: "false"
+      DATABASE_URL: jdbc:h2:file:/app/data/reclamationdb
+      H2_CONSOLE_ENABLED: "false"
+    ports:
+      - "8086:8086"
+    volumes:
+      - reclamation-data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8086/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    depends_on:
+      eureka:
+        condition: service_healthy
+    restart: unless-stopped
+
   gateway:
     build:
       context: ./backend
@@ -190,6 +216,7 @@ services:
         VITE_KEYCLOAK_CLIENT_ID: ${VITE_KEYCLOAK_CLIENT_ID:-react-client}
         VITE_REFRIGERATOR_ENDPOINT: ${VITE_REFRIGERATOR_ENDPOINT:-/refrigerator/fruits}
         VITE_ORDERS_ENDPOINT: ${VITE_ORDERS_ENDPOINT:-/api/orders}
+        VITE_RECLAMATIONS_ENDPOINT: ${VITE_RECLAMATIONS_ENDPOINT:-/api/reclamations}
     container_name: agriculture-frontend
     ports:
       - "5173:80"
@@ -202,3 +229,4 @@ volumes:
   postgres-data:
   refrigerator-postgres-data:
   rabbitmq-data:
+  reclamation-data:
