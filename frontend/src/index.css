@@ -344,3 +344,158 @@ button:disabled {
 .admin-controls h4 {
   margin: 0;
 }
+
+.delivery-list,
+.warehouse-list {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.delivery-item,
+.warehouse-item {
+  padding: 1rem;
+  border: 1px solid #d5e2d5;
+  border-radius: 0.75rem;
+  background: #ffffff;
+}
+
+.delivery-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.delivery-header h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.delivery-destination {
+  margin: 0.75rem 0;
+}
+
+.delivery-meta,
+.warehouse-meta {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  margin: 1rem 0;
+}
+
+.delivery-meta div,
+.warehouse-meta div {
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.6rem;
+  background: #f3f8f3;
+}
+
+.delivery-meta dt,
+.warehouse-meta dt {
+  color: #52606d;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.delivery-meta dd,
+.warehouse-meta dd {
+  margin: 0.2rem 0 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.delivery-actions,
+.assignment-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.delivery-status-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.delivery-status-form label {
+  display: grid;
+  gap: 0.35rem;
+  color: #52606d;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.delivery-status-form select {
+  min-width: 10rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #cbd5c9;
+  border-radius: 0.6rem;
+  background: #ffffff;
+  color: #1f2933;
+  font: inherit;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.delivery-status-form select:focus {
+  outline: 2px solid #2f855a;
+  outline-offset: 1px;
+}
+
+.assignment-note {
+  margin: 1rem 0 0;
+  padding: 0.65rem 0.85rem;
+  border-radius: 0.6rem;
+  background: #f3f8f3;
+  font-weight: 600;
+}
+
+.assignment-pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.assignment-assigned {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.inline-edit-form {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #d5e2d5;
+}
+
+.status-pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.status-dispatched {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.status-in_transit {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+
+.status-delivered {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.status-cancelled {
+  background: #fee2e2;
+  color: #991b1b;
+}

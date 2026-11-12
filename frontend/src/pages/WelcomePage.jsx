@@ -2,9 +2,10 @@ import { useAuth } from '../auth/LoginController';
 import RefrigeratorPanel from '../components/RefrigeratorPanel';
 import OrderingPanel from '../components/OrderingPanel';
 import ReclamationPanel from '../components/ReclamationPanel';
+import LogisticsPanel from '../components/LogisticsPanel';
 
 export default function WelcomePage() {
-  const { username, name, email, roles, token, logout } = useAuth();
+  const { username, name, email, roles, token, logout, isAdmin, isTransporter } = useAuth();
   const displayName = name || username;
 
   return (
@@ -33,6 +34,7 @@ export default function WelcomePage() {
           <RefrigeratorPanel />
           <OrderingPanel />
           <ReclamationPanel />
+          {(isAdmin || isTransporter) && <LogisticsPanel />}
         </div>
 
         <details>

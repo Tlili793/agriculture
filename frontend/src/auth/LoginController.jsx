@@ -79,6 +79,7 @@ export function LoginController({ children }) {
         email: keycloak.tokenParsed?.email,
         roles,
         isAdmin: roles.includes('ADMIN'),
+        isTransporter: roles.includes('TRANSPORTER'),
         logout: () =>
           keycloak.logout({
             redirectUri: window.location.origin,

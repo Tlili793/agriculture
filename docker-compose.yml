@@ -176,6 +176,61 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  logistics-service:
+    build:
+      context: ./microservices/ms_logistics
+      dockerfile: Dockerfile
+    container_name: agriculture-logistics-service
+    environment:
+      PORT: "8087"
+      EUREKA_SERVER_URL: http://eureka:8761/eureka
+      EUREKA_INSTANCE_HOST: logistics-service
+      EUREKA_PREFER_IP_ADDRESS: "false"
+      DATABASE_URL: jdbc:h2:file:/app/data/logisticsdb
+      H2_CONSOLE_ENABLED: "false"
+    ports:
+      - "8087:8087"
+    volumes:
+      - logistics-data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8087/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    depends_on:
+      eureka:
+        condition: service_healthy
+    restart: unless-stopped
+
+  marketplace-service:
+    build:
+      context: ./microservices/marketplace
+      dockerfile: Dockerfile
+    container_name: agriculture-marketplace-service
+    environment:
+      PORT: "8030"
+      SPRING_CLOUD_CONFIG_ENABLED: "false"
+      EUREKA_SERVER_URL: http://eureka:8761/eureka
+      EUREKA_INSTANCE_HOST: marketplace-service
+      EUREKA_PREFER_IP_ADDRESS: "false"
+      DATABASE_URL: jdbc:h2:file:/app/data/marketplacedb
+      H2_CONSOLE_ENABLED: "false"
+    ports:
+      - "8030:8030"
+    volumes:
+      - marketplace-data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8030/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    depends_on:
+      eureka:
+        condition: service_healthy
+    restart: unless-stopped
+
   gateway:
     build:
       context: ./backend
@@ -217,6 +272,8 @@ services:
         VITE_REFRIGERATOR_ENDPOINT: ${VITE_REFRIGERATOR_ENDPOINT:-/refrigerator/fruits}
         VITE_ORDERS_ENDPOINT: ${VITE_ORDERS_ENDPOINT:-/api/orders}
         VITE_RECLAMATIONS_ENDPOINT: ${VITE_RECLAMATIONS_ENDPOINT:-/api/reclamations}
+        VITE_LOGISTICS_DELIVERIES_ENDPOINT: ${VITE_LOGISTICS_DELIVERIES_ENDPOINT:-/api/deliveries}
+        VITE_LOGISTICS_WAREHOUSES_ENDPOINT: ${VITE_LOGISTICS_WAREHOUSES_ENDPOINT:-/api/warehouses}
     container_name: agriculture-frontend
     ports:
       - "5173:80"
@@ -230,3 +287,5 @@ volumes:
   refrigerator-postgres-data:
   rabbitmq-data:
   reclamation-data:
+  logistics-data:
+  marketplace-data:
