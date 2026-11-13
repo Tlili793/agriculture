@@ -27,7 +27,7 @@ import java.util.UUID;
 
 @CrossOrigin(origins = "*")
 @RestController
-@RequestMapping("/mic3/marketplace/listings")
+@RequestMapping("/api/marketplace/listings")
 @Tag(name = "Marketplace Listings", description = "CRUD operations for agricultural marketplace listings")
 public class MarketplaceListingController {
 

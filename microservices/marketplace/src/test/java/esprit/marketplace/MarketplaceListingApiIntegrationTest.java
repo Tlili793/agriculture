@@ -38,7 +38,7 @@ class MarketplaceListingApiIntegrationTest {
     void createsAndReadsListings() throws Exception {
         long id = createListing(USER_ONE, "Fresh tomatoes");
 
-        mockMvc.perform(get("/mic3/marketplace/listings/{id}", id))
+        mockMvc.perform(get("/api/marketplace/listings/{id}", id))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(id))
                 .andExpect(jsonPath("$.userId").value(USER_ONE.toString()))
@@ -47,11 +47,11 @@ class MarketplaceListingApiIntegrationTest {
                 .andExpect(jsonPath("$.quantity").value(10))
                 .andExpect(jsonPath("$.createdAt").exists());
 
-        mockMvc.perform(get("/mic3/marketplace/listings"))
+        mockMvc.perform(get("/api/marketplace/listings"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].id").value(id));
 
-        mockMvc.perform(get("/mic3/marketplace/listings/user/{userId}", USER_ONE))
+        mockMvc.perform(get("/api/marketplace/listings/user/{userId}", USER_ONE))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].id").value(id))
                 .andExpect(jsonPath("$[0].userId").value(USER_ONE.toString()));
@@ -61,7 +61,7 @@ class MarketplaceListingApiIntegrationTest {
     void updatesOwnedListingAndKeepsOwner() throws Exception {
         long id = createListing(USER_ONE, "Fresh tomatoes");
 
-        mockMvc.perform(put("/mic3/marketplace/listings/{id}", id)
+        mockMvc.perform(put("/api/marketplace/listings/{id}", id)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(listingBody(USER_ONE, "Organic tomatoes", 12)))
                 .andExpect(status().isOk())
@@ -74,7 +74,7 @@ class MarketplaceListingApiIntegrationTest {
     void rejectsUpdateByAnotherUser() throws Exception {
         long id = createListing(USER_ONE, "Fresh tomatoes");
 
-        mockMvc.perform(put("/mic3/marketplace/listings/{id}", id)
+        mockMvc.perform(put("/api/marketplace/listings/{id}", id)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(listingBody(USER_TWO, "Stolen tomatoes", 12)))
                 .andExpect(status().isForbidden());
@@ -84,11 +84,11 @@ class MarketplaceListingApiIntegrationTest {
     void deletesOwnedListing() throws Exception {
         long id = createListing(USER_ONE, "Fresh tomatoes");
 
-        mockMvc.perform(delete("/mic3/marketplace/listings/{id}", id)
+        mockMvc.perform(delete("/api/marketplace/listings/{id}", id)
                         .param("userId", USER_ONE.toString()))
                 .andExpect(status().isNoContent());
 
-        mockMvc.perform(get("/mic3/marketplace/listings/{id}", id))
+        mockMvc.perform(get("/api/marketplace/listings/{id}", id))
                 .andExpect(status().isNotFound());
     }
 
@@ -96,26 +96,26 @@ class MarketplaceListingApiIntegrationTest {
     void rejectsDeleteByAnotherUser() throws Exception {
         long id = createListing(USER_ONE, "Fresh tomatoes");
 
-        mockMvc.perform(delete("/mic3/marketplace/listings/{id}", id)
+        mockMvc.perform(delete("/api/marketplace/listings/{id}", id)
                         .param("userId", USER_TWO.toString()))
                 .andExpect(status().isForbidden());
     }
 
     @Test
     void validatesCreateRequest() throws Exception {
-        mockMvc.perform(post("/mic3/marketplace/listings")
+        mockMvc.perform(post("/api/marketplace/listings")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"title":"Missing owner","price":1.00,"quantity":1}
                                 """))
                 .andExpect(status().isBadRequest());
 
-        mockMvc.perform(post("/mic3/marketplace/listings")
+        mockMvc.perform(post("/api/marketplace/listings")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(listingBody(USER_ONE, " ", 1)))
                 .andExpect(status().isBadRequest());
 
-        mockMvc.perform(post("/mic3/marketplace/listings")
+        mockMvc.perform(post("/api/marketplace/listings")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"userId":"%s","title":"Invalid price","price":-1.00,"quantity":1}
@@ -124,7 +124,7 @@ class MarketplaceListingApiIntegrationTest {
     }
 
     private long createListing(UUID userId, String title) throws Exception {
-        MvcResult result = mockMvc.perform(post("/mic3/marketplace/listings")
+        MvcResult result = mockMvc.perform(post("/api/marketplace/listings")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(listingBody(userId, title, 10)))
                 .andExpect(status().isCreated())

@@ -1,524 +1,390 @@
-# Agriculture Gateway
+# Agriculture Microservices Platform
 
-Reactive edge service for the agriculture platform. It performs OpenID Connect login
-against Keycloak, validates bearer JWTs for API calls, and discovers downstream
-services through Eureka. This document explains how the gateway works, how a request
-travels through it, and how to run and troubleshoot it.
+A development-oriented agriculture platform built around a Spring Cloud gateway,
+Eureka service discovery, Keycloak authentication, React frontend, and five
+domain services.
 
-## Stack
+The platform currently provides:
 
-| Component | Version |
-| --- | --- |
-| Java | 17 |
-| Spring Boot | 4.1.2 |
-| Spring Cloud | 2025.1.4 |
-| Spring Cloud Gateway (server webflux) | 5.0.4 |
-| Spring Security | 7.1.2 |
-| Maven Wrapper | 3.9.16 |
-| Identity provider | Keycloak, realm `agriculture` (`http://localhost:8080`) |
-| Discovery | Eureka server (`http://localhost:8761`) |
-| Microservice 1 | FastAPI, `MS1` (`http://localhost:8001`) |
-| Microservice 2 | FastAPI, `MS2` (`http://localhost:8002`) |
-| Refrigerator service | Spring Boot, `REFRIGERATOR-SERVICE` (`http://localhost:8083`) |
-| Logistics service | Spring Boot, `LOGISTICS-SERVICE` (`http://localhost:8087`) |
+- Refrigerator inventory management
+- Ordering with RabbitMQ messaging
+- Reclamation handling
+- Logistics, deliveries, and warehouses
+- Marketplace listings
+- Keycloak-backed browser login
+- Eureka-based service discovery
+- A single gateway entry point and consolidated Swagger UI
+
+This README describes the stack as it currently runs. In particular, gateway
+authentication is configured but **not enforced** yet; see
+[Gateway security](#gateway-security).
+
+## Contents
+
+- [Architecture](#architecture)
+- [Services and ports](#services-and-ports)
+- [Project layout](#project-layout)
+- [Keycloak](#keycloak)
+- [Eureka](#eureka)
+- [Gateway](#gateway)
+- [Frontend](#frontend)
+- [Running the stack](#running-the-stack)
+- [Verification](#verification)
+- [Troubleshooting](#troubleshooting)
+- [Current limitations](#current-limitations)
 
 ## Architecture
 
-The gateway is a standard Spring Boot WebFlux application. It has three jobs:
+```text
+Browser
+   |
+   |-- http://keycloak.localhost:8080  (login, tokens)
+   |
+   `-- http://localhost:5173  (React frontend)
+             |
+             |-- /api/*, /refrigerator/*  (Nginx or Vite proxy)
+             v
+       http://localhost:8081  (Spring Cloud Gateway)
+             |
+             |-- Eureka service discovery (lb://...)
+             |
+             |-- REFRIGERATOR-SERVICE  :8083
+             |-- ORDERING-SERVICE      :8084
+             |-- RECLAMATION-SERVICE   :8086
+             |-- LOGISTICS-SERVICE     :8087
+             `-- MARKETPLACE           :8030
 
-1. **Authentication** - it is an OAuth2/OIDC *client*. Users log in through Keycloak
-   and the gateway keeps the resulting tokens in the HTTP session for browser flows.
-2. **JWT resource server** - it validates `Authorization: Bearer <JWT>` requests from
-   the React app on `/api/**`.
-3. **Routing** - it discovers `MS1` and `REFRIGERATOR-SERVICE` through Eureka, proxies
-   matching requests, and relays the logged-in user's access token.
-
+Eureka dashboard and registry: http://localhost:8761
+Keycloak admin console:        http://keycloak.localhost:8080/admin
+Swagger UI:                    http://localhost:8081/swagger-ui.html
 ```
-React :5173
-   │  GET /api/ms1/hello + Bearer JWT
-   ▼
-Gateway :8081 ──▶ Keycloak :8080 (JWKS / token validation)
-   │  Eureka lookup: MS1
-   ▼
-MS1 :8001 ──Eureka lookup: MS2──▶ MS2 :8002
-   │                                  │
-   └──── "Hello from MS1 -> Hello from MS2" ◀──┘
 
-Eureka Server :8761
-```
+The gateway resolves service IDs through Eureka using `lb://` URIs. Keycloak is
+a separate identity service. Service-to-service calls and inter-container URLs
+use Docker Compose service names such as `eureka`, `gateway`, and `keycloak`.
+
+## Services and ports
+
+| Component | Eureka name | Host port | Data store | Health/check |
+| --- | --- | --- | --- | --- |
+| Frontend | n/a | `5173` (container port `80`) | n/a | Container starts after gateway is healthy |
+| Gateway | `GATEWAY` | `8081` | n/a | `GET /public/hello` |
+| Eureka Server | `eureka-server` (not self-registered) | `8761` | n/a | `GET /actuator/health` |
+| Keycloak | n/a | `8080` | PostgreSQL 16 | Internal health port `9000`; OIDC discovery on `8080` |
+| PostgreSQL | n/a | internal `5432` only | Keycloak database | `pg_isready` |
+| RabbitMQ | n/a | `5672`, management `15672` | RabbitMQ volume | `rabbitmq-diagnostics ping` |
+| Refrigerator | `REFRIGERATOR-SERVICE` | `8083` | H2 file | `GET /actuator/health` |
+| Ordering | `ORDERING-SERVICE` | `8084` | H2 in-memory | No actuator health endpoint |
+| Reclamation | `RECLAMATION-SERVICE` | `8086` | H2 file | `GET /actuator/health` |
+| Logistics | `LOGISTICS-SERVICE` | `8087` | H2 file | `GET /actuator/health` |
+| Marketplace | `MARKETPLACE` | `8030` | H2 file | `GET /actuator/health` |
+
+Service names are case-insensitive in Eureka, but the gateway route URIs use the
+uppercase IDs shown above.
+
+Development credentials:
+
+- Keycloak bootstrap admin: `admin` / `admin`
+- Demo Keycloak user from the realm export: `demo` / `demo`
+- RabbitMQ: `agriculture` / `agriculture`
+
+These are development defaults only. Change them before using the stack outside
+a local environment.
 
 ## Project layout
 
-```
-gateway/
-├── frontend/                                  # Vite + React Keycloak login app
-├── eureka-server/                             # Spring Boot Eureka registry
-├── ms1/                                       # FastAPI service that calls MS2
-├── ms2/                                       # FastAPI downstream service
-├── refrigerator-service/                      # Spring Boot food inventory service
-├── keycloak/realm-export.json                 # realm, clients, demo user
-├── docker-compose.yml                         # full platform stack
-├── Dockerfile
-├── pom.xml
-├── README.md
-└── src
-    ├── main
-    │   ├── java/com/workshop/gateway
-    │   │   ├── GatewayApplication.java        # Spring Boot entry point
-    │   │   ├── config/SecurityConfig.java     # JWT + login security chains
-    │   │   └── controller/TestController.java # local test endpoints
-    │   └── resources/application.yaml         # routes, JWT, Eureka config
-    └── test/java/com/workshop/gateway
-        └── GatewayApplicationTests.java       # context load test
+```text
+.
+├── backend/
+│   ├── src/main/java/com/workshop/gateway/   # Gateway application
+│   ├── src/main/resources/application.yaml   # Routes and OAuth2 configuration
+│   ├── eureka-server/                        # Eureka registry
+│   ├── keycloak/realm-export.json            # Keycloak import
+│   └── docker-compose.infra.yml              # Keycloak/Postgres/Eureka only
+├── microservices/
+│   ├── refrigerator-service/
+│   ├── ordering-service/
+│   ├── reclamation-service/
+│   ├── ms_logistics/                         # Logistics service module
+│   └── marketplace/
+├── frontend/                                 # React + Vite + keycloak-js
+├── docker-compose.yml                        # Full platform
+└── README.md
 ```
 
-## Request flow
+## Keycloak
 
-For a detailed explanation of browser, gateway, Eureka, and microservice
-communication, see [COMMUNICATION.md](COMMUNICATION.md).
+Keycloak runs in development mode with the `agriculture` realm imported from
+`backend/keycloak/realm-export.json`.
 
-### React API flow (JWT)
+### URLs
 
-1. React logs in through Keycloak using `keycloak-js` and receives an access token.
-2. React calls `GET /api/ms1/hello` through the Vite proxy, sending
-   `Authorization: Bearer <access_token>`.
-3. The gateway's `/api/**` security chain validates the JWT against Keycloak's JWKS
-   endpoint. Missing or invalid tokens return `401`.
-4. The `ms1_route` matches `Path=/api/ms1/**`, strips the `/api/ms1` prefix, and
-   resolves `lb://MS1` through Eureka.
-5. The gateway forwards the request and its `Authorization` header to MS1.
-6. MS1 discovers `MS2` through Eureka and calls `MS2 /hello`.
-7. MS1 returns both greetings and the concatenated result.
-8. The gateway streams the response back to React, which displays it on the Welcome
-   page.
+The browser-facing issuer and OIDC endpoints use the `keycloak.localhost`
+hostname:
 
-### Browser login flow (session)
-
-1. A browser request for a protected non-API path arrives on port `8081`.
-2. `/public/**` and `/actuator/health` are open to everyone; other paths require an
-   authenticated user.
-3. Without a session, the gateway redirects to `/oauth2/authorization/keycloak`.
-4. Keycloak authenticates the user and redirects back to
-   `/login/oauth2/code/keycloak` with an authorization code.
-5. The gateway exchanges the code for tokens and stores the authorized client in the
-   session.
-6. For routes using `TokenRelay`, the gateway adds
-   `Authorization: Bearer <access_token>` to the proxied request.
-
-```mermaid
-sequenceDiagram
-    participant R as React :5173
-    participant G as Gateway :8081
-    participant K as Keycloak :8080
-    participant E as Eureka :8761
-    participant M1 as MS1 :8001
-    participant M2 as MS2 :8002
-
-    R->>G: GET /api/ms1/hello + Bearer JWT
-    G->>K: Fetch JWKS / validate JWT
-    G->>E: Discover MS1
-    E-->>G: MS1 instance
-    G->>M1: GET /hello + Authorization
-    M1->>E: Discover MS2
-    E-->>M1: MS2 instance
-    M1->>M2: GET /hello
-    M2-->>M1: Hello from MS2
-    M1-->>G: Hello from MS1 -> Hello from MS2
-    G-->>R: Concatenated JSON response
-```
-
-## Security configuration
-
-`SecurityConfig` builds two ordered reactive `SecurityWebFilterChain` beans.
-
-The `/api/**` chain runs first and validates bearer JWTs:
-
-```java
-http.securityMatcher("/api/**")
-    .csrf(ServerHttpSecurity.CsrfSpec::disable)
-    .authorizeExchange(exchanges -> exchanges.anyExchange().authenticated())
-    .oauth2ResourceServer(oauth2 -> oauth2.jwt(withDefaults()))
-    .exceptionHandling(exceptions -> exceptions
-        .authenticationEntryPoint(new HttpStatusServerEntryPoint(HttpStatus.UNAUTHORIZED)));
-```
-
-The default chain handles browser login and the remaining paths:
-
-```java
-http.csrf(csrf -> csrf.disable())
-    .authorizeExchange(exchanges -> exchanges
-        .pathMatchers("/public/**", "/actuator/health").permitAll()
-        .anyExchange().authenticated())
-    .oauth2Login(withDefaults())
-    .oauth2Client(withDefaults());
-```
-
-- `oauth2ResourceServer(jwt)` validates the JWT sent by React using
-  `spring.security.oauth2.resourceserver.jwt.jwk-set-uri`.
-- `oauth2Login` enables the login redirect and the `/login/oauth2/code/{registrationId}`
-  callback for browser/session flows.
-- `oauth2Client` enables the authorized-client manager and session repository used by
-  `TokenRelay`.
-- CSRF is disabled for simplicity; re-enable it before exposing state-changing
-  browser endpoints.
-
-## Route configuration
-
-Gateway 5.x reads routes from `spring.cloud.gateway.server.webflux.*`. The older
-`spring.cloud.gateway.routes.*` namespace is ignored, which silently produces no
-routes (requests then fall through to controllers or return 404).
-
-```yaml
-spring:
-  cloud:
-    gateway:
-      server:
-        webflux:
-          routes:
-            - id: refrigerator_service_route
-              uri: lb://REFRIGERATOR-SERVICE
-              order: -1
-              predicates:
-                - Path=/refrigerator/**
-              filters:
-                - TokenRelay=
-            - id: logistics_service_route
-              uri: lb://LOGISTICS-SERVICE
-              order: -1
-              predicates:
-                - Path=/api/logistics/**,/api/deliveries/**,/api/warehouses/**
-              filters:
-                - TokenRelay=
-                - ValidateDeliveryAssignment
-            - id: marketplace_service_route
-              uri: lb://MARKETPLACE
-              order: -1
-              predicates:
-                - Path=/api/marketplace/**
-              filters:
-                - TokenRelay=
-                - ValidateMarketplaceUserId
-                - RewritePath=/api/marketplace/(?<segment>.*),/mic3/marketplace/$\{segment}
-            - id: ms1_route
-              uri: lb://MS1
-              order: -1
-              predicates:
-                - Path=/api/ms1/**
-              filters:
-                - StripPrefix=2
-            - id: agriculture_service_route
-              uri: ${AGRICULTURE_SERVICE_URI:http://localhost:8082}
-              predicates:
-                - Path=/api/**
-              filters:
-                - TokenRelay=
-```
-
-| Property | Meaning |
+| Purpose | URL |
 | --- | --- |
-| `id` | Route identifier used in logs. |
-| `uri=lb://REFRIGERATOR-SERVICE` | Resolves the refrigerator service through Eureka and load-balances it. |
-| `Path=/refrigerator/**` | Forwards `/refrigerator/budgets`, `/refrigerator/fruits`, `/refrigerator/vegetables`, and `/refrigerator/meals` without rewriting. |
-| `uri=lb://LOGISTICS-SERVICE` | Resolves the logistics service through Eureka for `/api/logistics/**`, `/api/deliveries/**`, and `/api/warehouses/**`. |
-| `ValidateDeliveryAssignment` | Ensures the `transporterId` in an assignment request equals the JWT `sub`. |
-| `uri=lb://MARKETPLACE` | Resolves the marketplace service through Eureka for `/api/marketplace/**`. |
-| `ValidateMarketplaceUserId` | Ensures marketplace create/update body `userId` and delete query `userId` equal the JWT `sub`. |
-| `RewritePath=/api/marketplace/(?<segment>.*),/mic3/marketplace/$\{segment}` | Converts `/api/marketplace/hello` into `/mic3/marketplace/hello`. |
-| `uri=lb://MS1` | Resolves the `MS1` instance through Eureka and load-balances it. |
-| `order: -1` | Ensures specific routes such as `/api/marketplace/**` and `/api/ms1/**` are matched before the generic `/api/**` route. |
-| `StripPrefix=2` | Turns `/api/ms1/hello` into `/hello` for MS1. |
-| `TokenRelay=` | Copies the session user's access token into the `Authorization` header for the refrigerator, marketplace, and legacy routes. |
+| Admin console | `http://keycloak.localhost:8080/admin` |
+| Realm issuer | `http://keycloak.localhost:8080/realms/agriculture` |
+| Authorization | `http://keycloak.localhost:8080/realms/agriculture/protocol/openid-connect/auth` |
+| Token | `http://keycloak.localhost:8080/realms/agriculture/protocol/openid-connect/token` |
+| User info | `http://keycloak.localhost:8080/realms/agriculture/protocol/openid-connect/userinfo` |
+| JWKS | `http://keycloak.localhost:8080/realms/agriculture/protocol/openid-connect/certs` |
+| Logout | `http://keycloak.localhost:8080/realms/agriculture/protocol/openid-connect/logout` |
 
-The `/api/ms1/**` route forwards the incoming bearer token as-is. The refrigerator and
-legacy routes use `TokenRelay`, which requires an OAuth2 client registration. Requests to
-`/refrigerator/**` are validated by the JWT resource-server chain.
+Inside Docker, the gateway uses the internal JWKS URL
+`http://keycloak:8080/realms/agriculture/protocol/openid-connect/certs` through
+`KEYCLOAK_JWK_SET_URI`. The public issuer remains `keycloak.localhost`.
 
-Logistics access is role-based: `ADMIN` can manage deliveries and warehouses and accept
-assignment requests; `TRANSPORTER` can read deliveries and request an assignment for
-their own JWT `sub`. Warehouse access and delivery writes are admin-only.
+`keycloak.localhost` normally resolves through Docker network aliases. If the
+browser cannot resolve it, add an `/etc/hosts` entry pointing it to `127.0.0.1`
+or use the hostname that matches `KC_HOSTNAME`.
 
-Marketplace access requires any authenticated JWT. The gateway exposes
-`/api/marketplace/**` and rewrites it to `/mic3/marketplace/**` on the `MARKETPLACE`
-service. Listings are stored in H2 and owned by the `userId` UUID from the JWT `sub`:
-`ValidateMarketplaceUserId` rejects create/update/delete requests where that owner does
-not match the token. The service also enforces ownership before update/delete.
+### Clients
 
-| Method | Gateway path | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/marketplace/listings` | List all listings. |
-| `GET` | `/api/marketplace/listings/{id}` | Read one listing. |
-| `GET` | `/api/marketplace/listings/user/{userId}` | List one user's listings. |
-| `POST` | `/api/marketplace/listings` | Create a listing; body `userId` must equal the JWT `sub`. |
-| `PUT` | `/api/marketplace/listings/{id}` | Update an owned listing; body `userId` must equal the JWT `sub`. |
-| `DELETE` | `/api/marketplace/listings/{id}?userId=<uuid>` | Delete an owned listing; query `userId` must equal the JWT `sub`. |
-
-### Local test endpoints
-
-`TestController` provides two endpoints for quick checks:
-
-- `GET /public/hello` - always accessible, returns 200.
-- `GET /api/hello` - requires a valid bearer JWT, returns 200.
-
-`/api/hello` is declared by a normal controller, and controller mappings are evaluated
-before the gateway route mapping. That specific path is therefore served locally
-rather than proxied. To exercise proxying, request `/api/ms1/hello` with a bearer
-token.
-
-## Configuration reference
-
-`src/main/resources/application.yaml`:
-
-| Property | Value / purpose |
-| --- | --- |
-| `server.port` | `8081`, the gateway listening port. |
-| `spring.application.name` | `gateway`; used for Eureka registration. |
-| `...resourceserver.jwt.jwk-set-uri` | Keycloak JWKS endpoint used to validate bearer JWTs. |
-| `eureka.client.service-url.defaultZone` | Eureka server URL; defaults to `http://localhost:8761/eureka`. |
-| `...gateway.server.webflux.routes[0]` | `refrigerator_service_route`; `lb://REFRIGERATOR-SERVICE` for `/refrigerator/**`. |
-| `...gateway.server.webflux.routes[1]` | `ordering_service_route`; `lb://ORDERING-SERVICE` for `/api/orders/**`. |
-| `...gateway.server.webflux.routes[2]` | `reclamation_service_route`; `lb://RECLAMATION-SERVICE` for `/api/reclamations/**`. |
-| `...gateway.server.webflux.routes[3]` | `logistics_service_route`; `lb://LOGISTICS-SERVICE` for `/api/logistics/**`, `/api/deliveries/**`, and `/api/warehouses/**`. |
-| `...gateway.server.webflux.routes[4]` | `marketplace_service_route`; `lb://MARKETPLACE` for `/api/marketplace/**`, rewritten to `/mic3/marketplace/**`. |
-| `...gateway.server.webflux.routes[5]` | `agriculture_service_route`; legacy fallback for `/api/**`. |
-| `...provider.keycloak.authorization-uri` | Keycloak authorization endpoint. |
-| `...provider.keycloak.token-uri` | Keycloak token endpoint. |
-| `...provider.keycloak.user-info-uri` | Keycloak user-info endpoint. |
-| `...provider.keycloak.jwk-set-uri` | Keycloak JWKS endpoint used to verify ID tokens. |
-| `...provider.keycloak.user-name-attribute` | `preferred_username`; controls the principal name. |
-| `...registration.keycloak.provider` | `keycloak`; binds the registration to the provider above. |
-| `...registration.keycloak.client-id` | `gateway-client`. |
-| `...registration.keycloak.client-secret` | Confidential client secret (see security note below). |
-| `...registration.keycloak.authorization-grant-type` | `authorization_code`. |
-| `...registration.keycloak.redirect-uri` | `{baseUrl}/login/oauth2/code/{registrationId}`. |
-| `...registration.keycloak.scope` | `openid,profile,email`. |
-
-The four endpoint properties default to `http://localhost:8080/realms/agriculture`.
-Set `KEYCLOAK_REALM_URL` to override all of them at once, or set
-`KEYCLOAK_AUTHORIZATION_URI`, `KEYCLOAK_TOKEN_URI`, `KEYCLOAK_USER_INFO_URI`, and
-`KEYCLOAK_JWK_SET_URI` individually. Explicit endpoints are used instead of
-`issuer-uri` so local runs and containers can use different Keycloak hostnames.
-
-### Security note
-
-The Keycloak client secret is currently stored in plain text and committed with the
-project. Move it to an environment variable or a secret store before sharing the
-repository, for example:
-
-```yaml
-spring:
-  security:
-    oauth2:
-      client:
-        registration:
-          keycloak:
-            client-secret: ${KEYCLOAK_CLIENT_SECRET}
-```
-
-Rotate the secret in Keycloak if it has ever been pushed to a shared remote.
-
-## Eureka and microservices
-
-The `eureka-server/` directory contains the service registry. The `ms1/` and `ms2/`
-directories contain FastAPI services that register themselves with Eureka using
-`py-eureka-client`. Registration uses `init_async` inside the FastAPI lifespan so it
-does not conflict with FastAPI's event loop. The `refrigerator-service/` directory is a
-Spring Boot service that registers with Eureka through
-`spring-cloud-starter-netflix-eureka-client` as `REFRIGERATOR-SERVICE`. The marketplace
-service registers the same way as `MARKETPLACE`.
-
-| Service | Endpoint | Response |
-| --- | --- | --- |
-| `MS2` | `GET http://localhost:8002/hello` | `{"service":"ms2","message":"Hello from MS2"}` |
-| `MS1` | `GET http://localhost:8001/hello` | `{"service":"ms1","message":"Hello from MS1","ms2":"Hello from MS2","result":"Hello from MS1 -> Hello from MS2"}` |
-| `REFRIGERATOR-SERVICE` | `GET http://localhost:8083/refrigerator/fruits` | JSON array of fruit entries (see below) |
-| `MARKETPLACE` | `GET http://localhost:8030/mic3/marketplace/hello` | `Hello from Agricultural Marketplace` |
-
-MS1 does not hard-code MS2's address. It looks up `MS2` in Eureka and calls
-`MS2 /hello`, retrying briefly while the registry settles after startup.
-
-Environment variables for each FastAPI service:
-
-| Variable | Default | Docker Compose value |
-| --- | --- | --- |
-| `EUREKA_SERVER_URL` | `http://localhost:8761/eureka` | `http://eureka:8761/eureka` |
-| `EUREKA_APP_NAME` | `MS1` / `MS2` | `MS1` / `MS2` |
-| `EUREKA_INSTANCE_HOST` | `localhost` | `ms1` / `ms2` |
-| `PORT` | `8001` / `8002` | `8001` / `8002` |
-| `MS2_APP_NAME` | `MS2` on MS1 | `MS2` |
-
-The Spring Boot refrigerator service uses `EUREKA_SERVER_URL` and
-`EUREKA_INSTANCE_HOST` (default `localhost`, compose value `refrigerator-service`), plus
-`SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, and `SPRING_DATASOURCE_PASSWORD`
-for its PostgreSQL database.
-
-The Eureka dashboard is available at `http://localhost:8761`.
-
-### Refrigerator service API
-
-The paths below are available through the gateway at `http://localhost:8081` and are
-protected by the JWT resource-server chain, so send
-`Authorization: Bearer <access_token>`. The `refrigerator_service_route` matches
-`Path=/refrigerator/**`, resolves `lb://REFRIGERATOR-SERVICE` through Eureka, relays the
-token, and does not rewrite the path. The same paths are also available directly on
-`http://localhost:8083` (unprotected in local development).
-
-| Resource | Method | Path | Description |
+| Client | Type | Flow | Used by |
 | --- | --- | --- | --- |
-| Fruits | `GET` | `/refrigerator/fruits` | List all fruits |
-| Fruits | `GET` | `/refrigerator/fruits/{id}` | Get one fruit |
-| Fruits | `POST` | `/refrigerator/fruits` | Create a fruit (`201` with `Location` header) |
-| Fruits | `PUT` | `/refrigerator/fruits/{id}` | Replace a fruit |
-| Fruits | `DELETE` | `/refrigerator/fruits/{id}` | Delete a fruit (`204`) |
-| Vegetables | `GET` | `/refrigerator/vegetables` | List all vegetables |
-| Vegetables | `GET` | `/refrigerator/vegetables/{id}` | Get one vegetable |
-| Vegetables | `POST` | `/refrigerator/vegetables` | Create a vegetable (`201` with `Location` header) |
-| Vegetables | `PUT` | `/refrigerator/vegetables/{id}` | Replace a vegetable |
-| Vegetables | `DELETE` | `/refrigerator/vegetables/{id}` | Delete a vegetable (`204`) |
-| Meals | `GET` | `/refrigerator/meals` | List all meals |
-| Meals | `GET` | `/refrigerator/meals/{id}` | Get one meal |
-| Meals | `POST` | `/refrigerator/meals` | Create a meal (`201` with `Location` header) |
-| Meals | `PUT` | `/refrigerator/meals/{id}` | Replace a meal |
-| Meals | `DELETE` | `/refrigerator/meals/{id}` | Delete a meal (`204`) |
-| Budgets | `GET` | `/refrigerator/budgets` | List all budgets |
-| Budgets | `GET` | `/refrigerator/budgets/{id}` | Get one budget |
-| Budgets | `POST` | `/refrigerator/budgets` | Create a budget (`201` with `Location` header) |
-| Budgets | `PUT` | `/refrigerator/budgets/{id}` | Replace a budget |
-| Budgets | `DELETE` | `/refrigerator/budgets/{id}` | Delete a budget (`204`) |
+| `react-client` | Public SPA client | Authorization Code + PKCE | React frontend |
+| `gateway-client` | Confidential client | Authorization Code | Gateway OAuth2 client configuration |
 
-Fruit and vegetable request body (`ProduceRequest`):
+Direct access grants are disabled for these clients. The frontend initiates login
+with `keycloak-js` using `login-required` and PKCE (`S256`), and refreshes the
+token while the session is active.
 
-```json
-{
-  "userId": "demo",
-  "name": "Apple",
-  "quantity": 5,
-  "unit": "kg",
-  "price": 2.50,
-  "purchaseDate": "2026-11-01",
-  "expirationDate": "2026-11-20"
-}
+Redirect URIs are configured for local frontend and gateway development URLs,
+including `http://localhost:5173` and `http://localhost:8081`. If the frontend is
+served from another origin, add its callback URL to `react-client` in the admin
+console.
+
+The gateway client secret is supplied through `KEYCLOAK_CLIENT_SECRET`. Replace
+the development default and do not commit a production secret.
+
+### Roles and users
+
+The current live development realm contains these custom realm roles:
+
+| Role | Intended use |
+| --- | --- |
+| `ADMIN` | Administrative UI and domain operations |
+| `USER` | General authenticated user |
+| `FARMER` | Farmer-specific features |
+| `TRANSPORTER` | Logistics/transporter features |
+
+The frontend reads roles from `realm_access.roles` and currently uses `ADMIN` and
+`TRANSPORTER` for UI decisions.
+
+The checked-in `realm-export.json` defines the realm, clients, and demo user, but
+it does not define custom role entries or role assignments beyond the export
+contents. After wiping the Keycloak database, recreate the custom roles and
+assignments in the admin console if they are required.
+
+## Eureka
+
+Eureka is the service registry used by the gateway and all domain services.
+
+| Setting | Value |
+| --- | --- |
+| Dashboard | `http://localhost:8761/` |
+| Health | `http://localhost:8761/actuator/health` |
+| Apps API | `http://localhost:8761/eureka/apps` |
+| Self-registration | Disabled |
+| Registry fetch (server) | Disabled |
+| Self-preservation | Disabled |
+| Response cache update | `1000 ms` |
+| Eviction interval | `5000 ms` |
+
+The Eureka server itself does not register as a client. Domain services and the
+gateway register with `EUREKA_SERVER_URL`, which is
+`http://eureka:8761/eureka` inside Compose.
+
+Expected registered applications:
+
+```text
+GATEWAY
+REFRIGERATOR-SERVICE
+ORDERING-SERVICE
+RECLAMATION-SERVICE
+LOGISTICS-SERVICE
+MARKETPLACE
 ```
 
-`userId` is optional and defaults to `test`. `name` is required; `quantity` and `price`
-must be greater than or equal to zero; `expirationDate` cannot be before `purchaseDate`.
+Clients fetch the registry every 5 seconds and renew leases every 10 seconds.
+The gateway prefers DNS/hostnames rather than IP addresses for registered
+instances. Self-preservation is disabled to make local development fail fast;
+this is not a production recommendation.
 
-Meal request body (`MealRequest`):
-
-```json
-{
-  "userId": "demo",
-  "name": "Salad",
-  "description": "Lunch salad",
-  "mealType": "LUNCH",
-  "plannedDate": "2026-11-12",
-  "estimatedCost": 4.25,
-  "instructions": "Toss and serve"
-}
-```
-
-`mealType` is one of `BREAKFAST`, `LUNCH`, `DINNER`, or `SNACK`.
-
-Budget request body (`BudgetRequest`):
-
-```json
-{
-  "userId": "demo",
-  "monthlyLimit": 100.00,
-  "month": 11,
-  "year": 2026
-}
-```
-
-Only one budget can exist per `month`/`year`; a duplicate returns `409 Conflict`.
-
-Successful responses contain the persisted entity, for example:
-
-```json
-{
-  "id": 1,
-  "userId": "demo",
-  "name": "Apple",
-  "quantity": 5,
-  "unit": "kg",
-  "price": 2.50,
-  "purchaseDate": "2026-11-01",
-  "expirationDate": "2026-11-20",
-  "createdAt": "2026-11-11T21:00:00Z"
-}
-```
-
-Meals return `id`, `userId`, `name`, `description`, `mealType`, `plannedDate`,
-`estimatedCost`, `instructions`, and `createdAt`. Budgets return `id`, `userId`,
-`monthlyLimit`, `month`, `year`, and `createdAt`.
-
-Errors use a consistent body and status codes: `400` for validation failures, `404` for
-unknown ids, and `409` for conflicts.
-
-```json
-{
-  "timestamp": "2026-11-11T21:00:00Z",
-  "status": 400,
-  "error": "Bad Request",
-  "message": "Validation failed",
-  "fieldErrors": {
-    "name": "name is required"
-  }
-}
-```
-
-Example requests through the gateway:
+To inspect registrations:
 
 ```bash
-TOKEN=<access_token>
-
-curl -H "Authorization: Bearer $TOKEN" \
-  http://localhost:8081/refrigerator/fruits
-
-curl -X POST -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"userId":"demo","name":"Apple","quantity":5,"unit":"kg","price":2.50}' \
-  http://localhost:8081/refrigerator/fruits
-
-curl -X DELETE -H "Authorization: Bearer $TOKEN" \
-  http://localhost:8081/refrigerator/fruits/1
+curl -H 'Accept: application/json' http://localhost:8761/eureka/apps
 ```
 
-## Running locally
+## Gateway
 
-Docker Compose is the primary run target for the full platform. If you run the gateway
-outside Docker, start Eureka, MS1, MS2, and the refrigerator service first and point
-them at `http://localhost:8761/eureka` with `EUREKA_INSTANCE_HOST=localhost`.
+The gateway is the single HTTP entry point for application traffic on port
+`8081`. It uses Spring Cloud Gateway Server WebFlux and Eureka load balancing.
 
-Prerequisites:
+### Routes
 
-1. Java 17.
-2. Keycloak running at `http://localhost:8080` with realm `agriculture`, a confidential
-   client `gateway-client`, a public client `react-client`, and redirect URIs for the
-   gateway and React app.
-3. Eureka running on port `8761`, plus MS1 on `8001`, MS2 on `8002`, and the
-   refrigerator service on `8083` with its PostgreSQL database.
+| Path | Target | Notes |
+| --- | --- | --- |
+| `/refrigerator/**` | `lb://REFRIGERATOR-SERVICE` | No rewrite |
+| `/api/orders/**` | `lb://ORDERING-SERVICE` | No rewrite |
+| `/api/reclamations/**` | `lb://RECLAMATION-SERVICE` | No rewrite |
+| `/api/logistics/**`, `/api/deliveries/**`, `/api/warehouses/**` | `lb://LOGISTICS-SERVICE` | No rewrite |
+| `/api/marketplace/**` | `lb://MARKETPLACE` | No rewrite; marketplace controllers already use `/api/marketplace` |
+| `/services/refrigerator/**` | `lb://REFRIGERATOR-SERVICE` | Swagger/doc proxy with prefix rewrite |
+| `/services/ordering/**` | `lb://ORDERING-SERVICE` | Swagger/doc proxy with prefix rewrite |
+| `/services/reclamation/**` | `lb://RECLAMATION-SERVICE` | Swagger/doc proxy with prefix rewrite |
+| `/services/logistics/**` | `lb://LOGISTICS-SERVICE` | Swagger/doc proxy with prefix rewrite |
+| `/services/marketplace/**` | `lb://MARKETPLACE` | Swagger/doc proxy with prefix rewrite |
+| `/api/**` | `${AGRICULTURE_SERVICE_URI}` | Legacy fallback route |
 
-Start the gateway:
+The service routes use a higher precedence than the `/api/**` fallback. The
+fallback defaults to `http://localhost:8082` locally and
+`http://host.docker.internal:8082` in Compose. No service in the standard
+Compose stack listens there, so the fallback is only relevant when connecting a
+legacy external service.
+
+### Swagger and OpenAPI
+
+Swagger UI is available through the gateway:
+
+- UI: `http://localhost:8081/swagger-ui.html`
+- Alternate UI entry: `http://localhost:8081/docs`
+
+The UI loads these gateway-relative specs:
+
+- `/services/refrigerator/v3/api-docs`
+- `/services/ordering/v3/api-docs`
+- `/services/reclamation/v3/api-docs`
+- `/services/logistics/v3/api-docs`
+- `/services/marketplace/v3/api-docs`
+
+The service OpenAPI documents use a gateway-relative server URL (`/`), so
+"Try it out" requests from the consolidated UI are sent through the gateway. For
+marketplace, use the public gateway path such as
+`/api/marketplace/listings`, not a `/mic3` path.
+
+### Gateway security
+
+The current gateway security configuration is intentionally permissive:
+
+- CSRF is disabled.
+- Every exchange is permitted: `anyExchange().permitAll()`.
+- No route currently attaches a JWT validation or user-validation filter.
+- Swagger and all routed APIs are publicly accessible.
+
+The gateway does contain OAuth2 client registration, resource-server JWKS
+settings, `KeycloakJwtAuthenticationConverter`, and validation filter factory
+classes. They are not wired into the active security chain, so requests are not
+currently authenticated or rejected because of a missing or invalid token.
+
+Treat this deployment as an open development gateway. Before exposing it, enable
+a resource-server security chain, attach the intended route filters, and remove
+the blanket `permitAll()` rule.
+
+### Gateway environment variables
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `KEYCLOAK_REALM_URL` | Public Keycloak realm URL | `http://localhost:8080/realms/agriculture` |
+| `KEYCLOAK_JWK_SET_URI` | JWKS URL used by the gateway | Derived from the realm URL |
+| `KEYCLOAK_CLIENT_SECRET` | Confidential `gateway-client` secret | Development default in Compose/config |
+| `EUREKA_SERVER_URL` | Eureka registry URL | `http://localhost:8761/eureka` |
+| `AGRICULTURE_SERVICE_URI` | Legacy fallback target for `/api/**` | `http://localhost:8082` |
+
+Gateway routes and OAuth2 settings live in
+`backend/src/main/resources/application.yaml`. Gateway security lives in
+`backend/src/main/java/com/workshop/gateway/config/SecurityConfig.java`.
+
+## Frontend
+
+The frontend is a React 19 application built with Vite and `keycloak-js`.
+
+- Development server: `http://localhost:5173`
+- Container: Nginx serves the production build; host port `5173` maps to port `80`
+- Nginx proxies `/api/` and `/refrigerator/` to `http://gateway:8081`
+- Vite dev proxy forwards `/api` to `http://localhost:8081`
+
+Key environment variables (see `frontend/.env.example`):
+
+| Variable | Default |
+| --- | --- |
+| `VITE_KEYCLOAK_URL` | `http://keycloak.localhost:8080` |
+| `VITE_KEYCLOAK_REALM` | `agriculture` |
+| `VITE_KEYCLOAK_CLIENT_ID` | `react-client` |
+| `VITE_REFRIGERATOR_ENDPOINT` | `/refrigerator/fruits` |
+| `VITE_ORDERS_ENDPOINT` | `/api/orders` |
+| `VITE_RECLAMATIONS_ENDPOINT` | `/api/reclamations` |
+| `VITE_LOGISTICS_DELIVERIES_ENDPOINT` | `/api/deliveries` |
+| `VITE_LOGISTICS_WAREHOUSES_ENDPOINT` | `/api/warehouses` |
+
+The frontend requires a successful Keycloak login before rendering the
+authenticated application shell. Gateway authorization is still the current
+security limitation described above.
+
+## Running the stack
+
+### Prerequisites
+
+- Docker with Docker Compose
+- Java 17 and Node.js only if running components outside Docker
+
+### Start everything
 
 ```bash
-cd gateway
-./mvnw spring-boot:run
+docker compose up -d --build
+docker compose ps
 ```
 
-Build and test:
+Startup order is handled with health checks:
+
+1. PostgreSQL becomes healthy.
+2. Keycloak imports the realm and becomes healthy.
+3. Eureka becomes healthy.
+4. RabbitMQ becomes healthy.
+5. Domain services register with Eureka.
+6. Gateway waits for Keycloak, Eureka, and the refrigerator service.
+7. Frontend waits for the gateway.
+
+Open:
+
+- Frontend: `http://localhost:5173`
+- Keycloak admin: `http://keycloak.localhost:8080/admin`
+- Eureka: `http://localhost:8761`
+- Gateway Swagger: `http://localhost:8081/swagger-ui.html`
+- RabbitMQ management: `http://localhost:15672`
+
+The realm import runs only when the Keycloak database is empty. On later starts,
+existing Keycloak data is preserved in the `postgres-data` volume.
+
+### Logs and targeted rebuilds
 
 ```bash
-./mvnw clean verify
+docker compose logs -f gateway
+docker compose logs -f keycloak
+docker compose up -d --build gateway marketplace-service
 ```
 
-The test suite loads the full application context, including the OAuth2 client and
-resource-server configuration. Keycloak must therefore be reachable when running tests
-that make real authentication requests.
+### Stop or reset
 
-## React frontend
+```bash
+docker compose down
+docker compose down -v
+```
 
-The `frontend/` directory contains a Vite + React app that signs in with
-`keycloak-js` using the public Keycloak client `react-client`.
+`down -v` deletes database and H2 volumes. The realm export will be imported
+again on the next start, but custom roles/users not present in the export must be
+recreated.
+
+### Infra-only Compose
+
+`backend/docker-compose.infra.yml` starts only PostgreSQL and Keycloak. Use the
+root `docker-compose.yml` for the full platform, including Eureka and all domain
+services.
+
+### Local frontend
 
 ```bash
 cd frontend
@@ -526,159 +392,87 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:5173`. Unauthenticated users are redirected to the Keycloak
-login page. After a successful login, Keycloak redirects to
-`http://localhost:5173/welcome`, where the app automatically calls
-`GET /api/ms1/hello` through the gateway with the bearer JWT and shows the MS1/MS2
-concatenated response. The user can call MS1 again or log out from that page.
+The Vite dev server proxies `/api` to the gateway. The containerized Nginx
+configuration also proxies `/refrigerator/`.
 
-The Vite dev server proxies `/api` to `http://localhost:8081`, so no browser CORS
-configuration is needed for local development. Override the defaults in
-`frontend/.env` if needed:
+## Verification
+
+Use these checks after startup:
 
 ```bash
-VITE_KEYCLOAK_URL=http://keycloak.localhost:8080
-VITE_KEYCLOAK_REALM=agriculture
-VITE_KEYCLOAK_CLIENT_ID=react-client
-VITE_MS1_ENDPOINT=/api/ms1/hello
+# Eureka
+curl -fsS http://localhost:8761/actuator/health
+curl -fsS -H 'Accept: application/json' http://localhost:8761/eureka/apps
+
+# Keycloak OIDC discovery
+curl -fsS http://localhost:8080/realms/agriculture/.well-known/openid-configuration
+
+# Gateway
+curl -fsS http://localhost:8081/public/hello
+curl -fsS -o /dev/null -w '%{http_code}\n' http://localhost:8081/swagger-ui.html
+curl -fsS -o /dev/null -w '%{http_code}\n' http://localhost:8081/services/marketplace/v3/api-docs
+
+# Service health through host ports
+for port in 8030 8083 8086 8087; do
+  printf '%s: ' "$port"
+  curl -fsS -o /dev/null -w '%{http_code}\n' "http://localhost:$port/actuator/health"
+done
 ```
 
-The `react-client` definition is included in `keycloak/realm-export.json`.
-`realm-export.json` is only imported when Keycloak starts with an empty database; for
-an existing realm, add the client through the admin console or the Admin REST API.
-
-## Running with Docker Compose
-
-The included `docker-compose.yml` starts PostgreSQL, Keycloak, Eureka, MS1, MS2, the
-refrigerator, ordering, reclamation, logistics, and marketplace services, plus the
-gateway and frontend. Keycloak imports the `agriculture` realm, clients, and a demo user
-on first start; PostgreSQL data is kept in the `postgres-data` and
-`refrigerator-postgres-data` named volumes. Reclamation, logistics, and marketplace use
-H2 file databases persisted in the `reclamation-data`, `logistics-data`, and
-`marketplace-data` named volumes.
-
-```bash
-docker compose up --build
-```
-
-| Service | URL |
-| --- | --- |
-| Gateway | `http://localhost:8081` |
-| Keycloak | `http://keycloak.localhost:8080` |
-| Keycloak admin console | `http://keycloak.localhost:8080/admin` (`admin` / `admin`) |
-| Eureka dashboard | `http://localhost:8761` |
-| MS1 | `http://localhost:8001` and `http://localhost:8001/docs` |
-| MS2 | `http://localhost:8002` and `http://localhost:8002/docs` |
-| Refrigerator service | `http://localhost:8083/refrigerator/fruits` |
-| Marketplace service | `http://localhost:8030/mic3/marketplace/hello` |
-| React app | `http://localhost:5173` (`npm run dev`) |
-| Demo user | `demo` / `demo` |
-
-`keycloak.localhost` is used so the browser and the gateway container share the same
-issuer URL. Modern browsers resolve `*.localhost` to loopback; if yours does not, add
-`127.0.0.1 keycloak.localhost` to `/etc/hosts`.
-
-Browsers use `keycloak.localhost:8080`, while the gateway container fetches the JWKS
-from `http://keycloak:8080` via `KEYCLOAK_JWK_SET_URI`; Docker resolves
-`*.localhost` to loopback instead of the network alias. The gateway resolves `MS1` and
-`REFRIGERATOR-SERVICE` through Eureka at `http://eureka:8761/eureka`. The
-legacy fallback route defaults to `http://host.docker.internal:8082`; override it with
-`AGRICULTURE_SERVICE_URI`. Override the client secret with `KEYCLOAK_CLIENT_SECRET` if
-you rotate it.
-
-`docker-compose.infra.yml` defines only PostgreSQL and Keycloak and uses the same
-container names and port `8080` as the full compose file. Stop it before starting the
-full stack:
-
-```bash
-docker compose -f docker-compose.infra.yml down
-docker compose up --build
-```
-
-Stop the stack with `docker compose down` and remove persisted data with
-`docker compose down -v`.
-
-## Verifying a running instance
-
-```bash
-# Eureka registration: look for MS1, MS2, and REFRIGERATOR-SERVICE with status UP
-curl -H 'Accept: application/json' http://localhost:8761/eureka/apps
-
-# Direct service calls
-curl http://localhost:8002/hello
-curl http://localhost:8001/hello
-curl http://localhost:8083/refrigerator/fruits
-curl http://localhost:8030/mic3/marketplace/hello
-
-# Gateway without a token: expect 401
-curl -i http://localhost:8081/api/ms1/hello
-curl -i http://localhost:8081/refrigerator/fruits
-curl -i http://localhost:8081/api/marketplace/hello
-
-# Gateway public endpoint: expect 200
-curl -i http://localhost:8081/public/hello
-```
-
-Then open `http://localhost:5173`, log in as `demo` / `demo`, and confirm the Welcome
-page shows `Hello from MS1 -> Hello from MS2`. You can also paste the JWT into:
-
-```bash
-curl -H "Authorization: Bearer <access_token>" http://localhost:8081/api/ms1/hello
-curl -H "Authorization: Bearer <access_token>" http://localhost:8081/refrigerator/fruits
-curl -H "Authorization: Bearer <access_token>" http://localhost:8081/api/marketplace/hello
-
-# Marketplace CRUD; userId must equal the JWT sub
-curl -H "Authorization: Bearer <access_token>" http://localhost:8081/api/marketplace/listings
-curl -H "Authorization: Bearer <access_token>" \
-  -H "Content-Type: application/json" \
-  -d '{"userId":"<jwt_sub>","title":"Fresh tomatoes","description":"Farm fresh","price":2.50,"quantity":10}' \
-  http://localhost:8081/api/marketplace/listings
-```
-
-To see route matching, start the gateway with debug logging:
-
-```bash
-./mvnw spring-boot:run \
-  -Dspring-boot.run.arguments="--logging.level.org.springframework.cloud.gateway=DEBUG"
-```
-
-Look for:
-
-```
-GatewayProperties : Routes supplied from Gateway Properties: [... id='refrigerator_service_route' ... id='ms1_route' ...]
-RouteDefinitionRouteLocator : RouteDefinition matched: refrigerator_service_route
-```
-
-## Version-specific notes
-
-- **Gateway 5.x property namespace.** Routes must live under
-  `spring.cloud.gateway.server.webflux.*`. The pre-5.x `spring.cloud.gateway.routes.*`
-  keys are not read and fail silently.
-- **Boot 4 starter renames.** Use `spring-boot-starter-security-oauth2-client` (not the
-  deprecated `spring-boot-starter-oauth2-client`). For JWT validation use
-  `spring-boot-starter-security-oauth2-resource-server`.
-- **Gateway artifact rename.** Use `spring-cloud-starter-gateway-server-webflux`; the old
-  `spring-cloud-starter-gateway` artifact does not match this stack.
-- **Maven wrapper pinned to 3.9.16.** IntelliJ IDEA 2025.3 has a known Maven importer
-  issue (IDEA-391550) with Maven 3.10.x; the wrapper is pinned to avoid corrupt
-  project imports.
-- **Token relay needs an OAuth2 client.** `TokenRelay` resolves the token from the
-  authorized-client repository populated by `oauth2Login`/`oauth2Client`. A
-  resource-server-only setup has no authorized client and the filter fails silently
-  or forwards requests without a token.
+Because gateway security currently permits all exchanges, application calls do
+not require an `Authorization` header. A valid route should still return a
+service response even without a token. Verify users and realm roles in the
+Keycloak admin console when testing role-aware UI behavior.
 
 ## Troubleshooting
 
-| Symptom | Likely cause |
-| --- | --- |
-| Redirect loop or `invalid_redirect_uri` | Keycloak client redirect URI does not include `http://localhost:8081/login/oauth2/code/keycloak`. |
-| `invalid_client` / `Unauthorized` at token exchange | Wrong or rotated `client-secret`, or wrong client id. |
-| Startup fails resolving Keycloak endpoints | Keycloak is down, the realm name is wrong, or `KEYCLOAK_REALM_URL` points at an unreachable host. |
-| `/api/**` returns 404 instead of proxying | Route keys use the old namespace, or the path is handled by a controller. |
-| `/api/ms1/hello` returns 401 | Missing/expired JWT, or the gateway cannot reach the Keycloak JWKS endpoint. |
-| `/api/ms1/hello` returns 503/502 | MS1 is not registered in Eureka, or MS1 cannot discover/call MS2. |
-| Eureka dashboard does not show MS1/MS2 | `EUREKA_SERVER_URL` is wrong, or `EUREKA_INSTANCE_HOST` is not resolvable by the gateway. |
-| MS1 returns `MS2 is not available through Eureka` | MS2 is down or has not registered yet; check `http://localhost:8761/eureka/apps` and MS2 logs. |
-| Downstream receives no `Authorization` header | `TokenRelay` filter missing on a session route, or the user is not logged in. |
-| IDE cannot resolve Spring classes | Maven project model is stale: reimport as a Maven project, ensure the module uses JDK 17 and has Maven library dependencies. |
-| IDE Maven import crashes | Close the IDE, delete its `external_build_system` and `project-model-cache` folders for the project, then reimport. |
+| Symptom | Likely cause | Check |
+| --- | --- | --- |
+| Keycloak login redirect fails | Redirect URI missing from `react-client` | Add the frontend/gateway URL in Keycloak |
+| `keycloak.localhost` does not resolve | Hostname/alias missing | Add `/etc/hosts` entry or use matching `KC_HOSTNAME` |
+| User has no expected roles | Realm was reset or role not assigned | Recreate/assign realm roles in the admin console |
+| Gateway returns `503` | No healthy instance in Eureka | Check service health, registration, and gateway logs |
+| Gateway returns `404` | Path does not match a route | Use `/api/marketplace/...`, `/services/...`, or the documented route prefixes |
+| OpenAPI/Swagger request fails | Wrong service path or spec not served | Check `/services/{service}/v3/api-docs` and the service logs |
+| Marketplace request uses `/mic3/...` | Old path removed | Use `/api/marketplace/...` |
+| Eureka list is empty | Service cannot reach Eureka | Check `EUREKA_SERVER_URL` and service startup logs |
+| Ordering service restarts | RabbitMQ unavailable or startup dependency failed | Check `docker compose logs ordering-service rabbitmq` |
+| Keycloak role changes disappear | Database volume was reset | Recreate roles after `docker compose down -v` |
+
+## Current limitations
+
+- **Gateway authentication is not enforced.** OAuth2/Keycloak configuration
+  exists, but the active security chain permits all requests and does not attach
+  JWT or user-ownership filters.
+- **Custom Keycloak roles are not in the realm export.** The live development
+  realm has `ADMIN`, `USER`, `FARMER`, and `TRANSPORTER`, but a fresh import may
+  need manual role recreation and assignment.
+- **The legacy `/api/**` fallback has no service in the Compose stack.** It is
+  retained for optional external/legacy integration.
+- **Ordering uses in-memory H2 in Compose.** Its data is lost when the ordering
+  container is recreated.
+- **Marketplace POST responses may use an internal `Location` header.** Through
+  the gateway, a created listing can return a location pointing at the internal
+  `marketplace-service:8030` host. The response body and CRUD flow still work,
+  but the header is not host-reachable.
+- **Development defaults are embedded in Compose.** Change the Keycloak admin,
+  demo, RabbitMQ, and `gateway-client` secrets before using this outside local
+  development.
+
+## Version notes
+
+- Java 17
+- Spring Boot 4.1.2
+- Spring Cloud 2025.1.4
+- Spring Cloud Gateway Server WebFlux 5.0.4
+- Spring Security 7.1.2
+- Keycloak 26.4.0
+- PostgreSQL 16
+- RabbitMQ 4 (management image)
+- React 19 / Vite 7 / `keycloak-js` 26
+
+Gateway 5 configuration uses the
+`spring.cloud.gateway.server.webflux` namespace. Spring Boot 4 uses the explicit
+starters `spring-cloud-starter-gateway-server-webflux`,
+`spring-boot-starter-security-oauth2-client`, and
+`spring-boot-starter-security-oauth2-resource-server`.

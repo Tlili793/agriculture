@@ -17,7 +17,7 @@ class MarketPlaceRestApiTest {
 
     @Test
     void helloReturnsMarketplaceMessage() throws Exception {
-        mockMvc.perform(get("/mic3/marketplace/hello"))
+        mockMvc.perform(get("/api/marketplace/hello"))
                 .andExpect(status().isOk())
                 .andExpect(content().string("Hello from Agricultural Marketplace"));
     }

@@ -35,8 +35,6 @@ spring:
               order: -1
               predicates:
                 - Path=/api/marketplace/**
-              filters:
-                - RewritePath=/api/marketplace/(?<segment>.*),/mic3/marketplace/${segment}
 
             # ── Swagger / OpenAPI doc proxies ──
             - id: refrigerator_service_docs

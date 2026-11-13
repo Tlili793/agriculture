@@ -7,7 +7,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @CrossOrigin(origins = "*")
 @RestController
-@RequestMapping("/mic3/marketplace")
+@RequestMapping("/api/marketplace")
 public class MarketPlaceRestApi {
 
     @GetMapping("/hello")
