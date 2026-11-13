@@ -499,3 +499,312 @@ button:disabled {
   background: #fee2e2;
   color: #991b1b;
 }
+
+.app-shell {
+  width: min(100%, 88rem);
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.app-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 2rem;
+  margin-bottom: 2rem;
+}
+
+.app-heading {
+  min-width: 0;
+}
+
+.app-header h1 {
+  font-size: clamp(1.8rem, 4vw, 2.6rem);
+}
+
+.account-card {
+  width: min(100%, 22rem);
+  flex: 0 0 auto;
+  padding: 1.25rem;
+  border: 1px solid #d5e2d5;
+  border-radius: 1rem;
+  background: #ffffff;
+  box-shadow: 0 1rem 2.5rem rgb(31 41 51 / 8%);
+}
+
+.account-name {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.account-meta {
+  margin: 0.25rem 0 0;
+  color: #52606d;
+  overflow-wrap: anywhere;
+}
+
+.role-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.9rem 0 1rem;
+}
+
+.role-chip {
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  background: #edf7ed;
+  color: #276749;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.account-card button {
+  width: 100%;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(15rem, 18rem) minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.service-sidebar {
+  position: sticky;
+  top: 1rem;
+  padding: 1rem;
+  border: 1px solid #d5e2d5;
+  border-radius: 1rem;
+  background: #ffffff;
+  box-shadow: 0 1rem 2.5rem rgb(31 41 51 / 8%);
+}
+
+.service-nav-title {
+  margin: 0 0 0.75rem;
+  color: #2f855a;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.service-nav {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.service-nav-item {
+  display: grid;
+  gap: 0.25rem;
+  width: 100%;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid transparent;
+  border-radius: 0.75rem;
+  background: transparent;
+  color: #1f2933;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.service-nav-item:hover {
+  background: #edf7ed;
+}
+
+.service-nav-item.is-active {
+  border-color: #2f855a;
+  background: #edf7ed;
+}
+
+.service-nav-label {
+  font-weight: 700;
+}
+
+.service-nav-description {
+  color: #52606d;
+  font-size: 0.78rem;
+  font-weight: 400;
+}
+
+.session-details {
+  margin: 1rem 0 0;
+  padding-top: 1rem;
+  border-top: 1px solid #d5e2d5;
+}
+
+.session-details summary {
+  color: #52606d;
+  font-size: 0.8rem;
+}
+
+.session-details pre {
+  margin: 0.75rem 0 0;
+  max-height: 12rem;
+}
+
+.service-workspace {
+  min-width: 0;
+}
+
+.service-workspace:focus-visible {
+  outline: 2px solid #2f855a;
+  outline-offset: 4px;
+}
+
+.service-workspace > .microservice-panel {
+  margin: 0;
+  background: #ffffff;
+}
+
+.resource-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.resource-tab {
+  padding: 0.45rem 0.9rem;
+  border: 1px solid #cbd5c9;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #276749;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.resource-tab:hover {
+  background: #edf7ed;
+}
+
+.resource-tab.is-active {
+  border-color: #2f855a;
+  background: #2f855a;
+  color: #ffffff;
+}
+
+.table-scroll {
+  margin-top: 0.75rem;
+  overflow-x: auto;
+  border: 1px solid #d5e2d5;
+  border-radius: 0.75rem;
+  background: #ffffff;
+}
+
+.data-table {
+  width: 100%;
+  min-width: 52rem;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.data-table th,
+.data-table td {
+  padding: 0.7rem 0.8rem;
+  border-bottom: 1px solid #e4ece4;
+  text-align: left;
+  vertical-align: top;
+}
+
+.data-table th {
+  background: #f3f8f3;
+  color: #52606d;
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.data-table tbody tr:hover:not(.detail-row) {
+  background: #fbfdfb;
+}
+
+.data-table td {
+  overflow-wrap: anywhere;
+}
+
+.cell-actions {
+  white-space: nowrap;
+}
+
+.table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.table-actions button,
+.data-table .secondary-button,
+.data-table .danger-button {
+  padding: 0.4rem 0.65rem;
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
+}
+
+.table-message {
+  padding: 1.5rem 1rem;
+  color: #52606d;
+  text-align: center;
+}
+
+.detail-row > td {
+  padding: 1rem;
+  background: #f3f8f3;
+}
+
+.expanded-details {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.expanded-details p {
+  margin: 0.35rem 0 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.nested-table-block h4 {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.nested-table-block .data-table {
+  min-width: 32rem;
+}
+
+.nested-table-block .table-scroll {
+  margin-top: 0.5rem;
+}
+
+@media (max-width: 900px) {
+  .app-shell {
+    padding: 1rem;
+  }
+
+  .app-header {
+    flex-direction: column;
+  }
+
+  .account-card {
+    width: 100%;
+  }
+
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .service-sidebar {
+    position: static;
+  }
+
+  .service-nav {
+    grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  }
+}

@@ -8,6 +8,8 @@ import {
   fetchUserReclamations,
   updateReclamationStatus,
 } from '../api/reclamations';
+import DataTable from './DataTable';
+import { formatDateTime, formatStatus } from '../utils/format';
 
 const EMPTY_FORM = {
   orderId: '',
@@ -17,13 +19,12 @@ const EMPTY_FORM = {
 
 const STATUSES = ['OPEN', 'IN_PROGRESS', 'RESOLVED', 'REJECTED'];
 
-function formatDate(value) {
-  if (!value) {
-    return '-';
-  }
-
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+function StatusBadge({ status }) {
+  return (
+    <span className={`status-badge status-${status.toLowerCase()}`}>
+      {formatStatus(status)}
+    </span>
+  );
 }
 
 function AdminControls({ reclamation, token, keycloak, onChanged, onDeleted }) {
@@ -79,7 +80,7 @@ function AdminControls({ reclamation, token, keycloak, onChanged, onDeleted }) {
           <select value={status} onChange={(event) => setStatus(event.target.value)}>
             {STATUSES.map((option) => (
               <option key={option} value={option}>
-                {option}
+                {formatStatus(option)}
               </option>
             ))}
           </select>
@@ -114,55 +115,6 @@ function AdminControls({ reclamation, token, keycloak, onChanged, onDeleted }) {
   );
 }
 
-function ReclamationCard({ reclamation, isAdmin, token, keycloak, onChanged, onDeleted }) {
-  return (
-    <article className="reclamation-item">
-      <div className="reclamation-header">
-        <h3>
-          #{reclamation.id} · {reclamation.subject}
-        </h3>
-        <span className={`status-badge status-${reclamation.status.toLowerCase()}`}>
-          {reclamation.status}
-        </span>
-      </div>
-      <p>{reclamation.description}</p>
-      <dl className="reclamation-meta">
-        <div>
-          <dt>Order</dt>
-          <dd>{reclamation.orderId}</dd>
-        </div>
-        <div>
-          <dt>Created</dt>
-          <dd>{formatDate(reclamation.createdAt)}</dd>
-        </div>
-        {isAdmin && (
-          <div>
-            <dt>User ID</dt>
-            <dd>{reclamation.userId}</dd>
-          </div>
-        )}
-      </dl>
-      {reclamation.adminResponse ? (
-        <div className="admin-response">
-          <strong>Admin response</strong>
-          <p>{reclamation.adminResponse}</p>
-        </div>
-      ) : (
-        <p className="muted">No admin response yet.</p>
-      )}
-      {isAdmin && (
-        <AdminControls
-          reclamation={reclamation}
-          token={token}
-          keycloak={keycloak}
-          onChanged={onChanged}
-          onDeleted={onDeleted}
-        />
-      )}
-    </article>
-  );
-}
-
 export default function ReclamationPanel() {
   const { token, keycloak, isAdmin } = useAuth();
   const userId = keycloak.tokenParsed?.sub;
@@ -172,6 +124,9 @@ export default function ReclamationPanel() {
   const [reclamations, setReclamations] = useState([]);
   const [listStatus, setListStatus] = useState('idle');
   const [listError, setListError] = useState(null);
+  const [expandedIds, setExpandedIds] = useState([]);
+  const [actionStatus, setActionStatus] = useState('idle');
+  const [actionError, setActionError] = useState(null);
   const [lookupId, setLookupId] = useState('');
   const [lookupStatus, setLookupStatus] = useState('idle');
   const [lookupError, setLookupError] = useState(null);
@@ -182,10 +137,16 @@ export default function ReclamationPanel() {
     setListError(null);
 
     try {
-      const result = isAdmin
-        ? await fetchAllReclamations({ token, keycloak })
-        : await fetchUserReclamations({ token, keycloak, userId });
-      setReclamations(result ?? []);
+      if (isAdmin) {
+        const result = await fetchAllReclamations({ token, keycloak });
+        setReclamations(result ?? []);
+      } else if (userId) {
+        const result = await fetchUserReclamations({ token, keycloak, userId });
+        setReclamations(result ?? []);
+      } else {
+        throw new Error('The authenticated user does not have a Keycloak subject.');
+      }
+
       setListStatus('success');
     } catch (loadFailure) {
       setListError(loadFailure.message);
@@ -202,6 +163,12 @@ export default function ReclamationPanel() {
   const updateField = (event) => {
     const { name, value } = event.target;
     setForm((current) => ({ ...current, [name]: value }));
+  };
+
+  const toggleExpanded = (id) => {
+    setExpandedIds((current) =>
+      current.includes(id) ? current.filter((value) => value !== id) : [...current, id],
+    );
   };
 
   const handleCreate = async (event) => {
@@ -252,6 +219,25 @@ export default function ReclamationPanel() {
     }
   };
 
+  const handleDelete = async (reclamation) => {
+    if (!window.confirm(`Delete reclamation #${reclamation.id}?`)) {
+      return;
+    }
+
+    setActionStatus('loading');
+    setActionError(null);
+
+    try {
+      await deleteReclamation({ token, keycloak, id: reclamation.id });
+      setLookupResult(null);
+      setActionStatus('success');
+      await loadReclamations();
+    } catch (failure) {
+      setActionError(failure.message);
+      setActionStatus('error');
+    }
+  };
+
   const handleChanged = async () => {
     setLookupResult(null);
     await loadReclamations();
@@ -261,6 +247,76 @@ export default function ReclamationPanel() {
     setLookupResult(null);
     await loadReclamations();
   };
+
+  const columns = [
+    { key: 'id', header: 'ID' },
+    { key: 'subject', header: 'Subject' },
+    { key: 'orderId', header: 'Order' },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (row) => <StatusBadge status={row.status} />,
+    },
+    {
+      key: 'createdAt',
+      header: 'Created',
+      render: (row) => formatDateTime(row.createdAt),
+    },
+    { key: 'userId', header: 'User ID' },
+    {
+      key: 'adminResponse',
+      header: 'Admin response',
+      render: (row) => row.adminResponse || '-',
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      className: 'cell-actions',
+      render: (row) => (
+        <div className="table-actions">
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => toggleExpanded(row.id)}
+          >
+            {expandedIds.includes(row.id) ? 'Hide' : 'Details'}
+          </button>
+          {isAdmin && (
+            <button
+              type="button"
+              className="danger-button"
+              onClick={() => handleDelete(row)}
+              disabled={actionStatus === 'loading'}
+            >
+              Delete
+            </button>
+          )}
+        </div>
+      ),
+    },
+  ];
+
+  const renderDetails = (reclamation) => (
+    <div className="expanded-details">
+      <div>
+        <strong>Description</strong>
+        <p>{reclamation.description}</p>
+      </div>
+      <div>
+        <strong>Admin response</strong>
+        <p>{reclamation.adminResponse || 'No admin response yet.'}</p>
+      </div>
+      {isAdmin && (
+        <AdminControls
+          reclamation={reclamation}
+          token={token}
+          keycloak={keycloak}
+          onChanged={handleChanged}
+          onDeleted={handleDeleted}
+        />
+      )}
+    </div>
+  );
 
   return (
     <section className="microservice-panel">
@@ -339,13 +395,13 @@ export default function ReclamationPanel() {
           {lookupStatus === 'error' && <p className="error-text">{lookupError}</p>}
           {lookupStatus === 'success' && lookupResult && (
             <div className="result-block">
-              <ReclamationCard
-                reclamation={lookupResult}
-                isAdmin={isAdmin}
-                token={token}
-                keycloak={keycloak}
-                onChanged={handleChanged}
-                onDeleted={handleDeleted}
+              <h3>Reclamation #{lookupResult.id}</h3>
+              <DataTable
+                columns={columns}
+                rows={[lookupResult]}
+                expandedRowKeys={expandedIds}
+                renderExpandedRow={renderDetails}
+                ariaLabel="Looked up reclamation table"
               />
             </div>
           )}
@@ -364,26 +420,20 @@ export default function ReclamationPanel() {
             Reload
           </button>
         </div>
-        {listStatus === 'loading' && <p>Loading reclamations...</p>}
-        {listStatus === 'error' && <p className="error-text">{listError}</p>}
-        {listStatus === 'success' && reclamations.length === 0 && (
-          <p className="muted">No reclamations yet.</p>
+        {actionError && <p className="error-text">{actionError}</p>}
+        {actionStatus === 'success' && (
+          <p className="success-text">Reclamation deleted.</p>
         )}
-        {listStatus === 'success' && reclamations.length > 0 && (
-          <div className="reclamation-list">
-            {reclamations.map((reclamation) => (
-              <ReclamationCard
-                key={reclamation.id}
-                reclamation={reclamation}
-                isAdmin={isAdmin}
-                token={token}
-                keycloak={keycloak}
-                onChanged={handleChanged}
-                onDeleted={handleDeleted}
-              />
-            ))}
-          </div>
-        )}
+        <DataTable
+          columns={columns}
+          rows={reclamations}
+          loading={listStatus === 'loading'}
+          error={listError}
+          emptyMessage="No reclamations found."
+          expandedRowKeys={expandedIds}
+          renderExpandedRow={renderDetails}
+          ariaLabel="Reclamations table"
+        />
       </div>
     </section>
   );

@@ -13,6 +13,9 @@ import {
   updateDeliveryStatus,
   updateWarehouse,
 } from '../api/logistics';
+import DataTable from './DataTable';
+import ResourceTabs from './ResourceTabs';
+import { formatAmount, formatDateTime, formatStatus } from '../utils/format';
 
 const DELIVERY_STATUSES = [
   'PENDING',
@@ -33,19 +36,6 @@ const EMPTY_WAREHOUSE_FORM = {
   normalCapacity: '',
   addressLocale: '',
 };
-
-function formatDate(value) {
-  if (!value) {
-    return '-';
-  }
-
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
-}
-
-function formatStatus(value) {
-  return value ? value.replaceAll('_', ' ') : '-';
-}
 
 function deliveryFormFrom(delivery) {
   return {
@@ -71,7 +61,7 @@ function DeliveryStatusBadge({ status }) {
   );
 }
 
-function DeliveryCard({
+function DeliveryDetails({
   delivery,
   isAdmin,
   isTransporter,
@@ -197,44 +187,28 @@ function DeliveryCard({
   };
 
   return (
-    <article className="delivery-item">
-      <div className="delivery-header">
-        <h3>
-          #{delivery.id} · Order {delivery.orderId}
-        </h3>
-        <DeliveryStatusBadge status={delivery.status} />
-      </div>
-      <p className="delivery-destination">{delivery.destination}</p>
-
+    <div className="expanded-details">
       <dl className="delivery-meta">
         <div>
           <dt>Dispatched</dt>
-          <dd>{formatDate(delivery.dispatchedAt)}</dd>
+          <dd>{formatDateTime(delivery.dispatchedAt)}</dd>
         </div>
-        {delivery.requestedTransporterId && (
-          <div>
-            <dt>Requested by</dt>
-            <dd>{delivery.requestedTransporterId}</dd>
-          </div>
-        )}
-        {delivery.requestedTransporterId && (
-          <div>
-            <dt>Requested at</dt>
-            <dd>{formatDate(delivery.assignmentRequestedAt)}</dd>
-          </div>
-        )}
-        {delivery.assignedTransporterId && (
-          <div>
-            <dt>Assigned to</dt>
-            <dd>{delivery.assignedTransporterId}</dd>
-          </div>
-        )}
-        {delivery.assignedTransporterId && (
-          <div>
-            <dt>Assigned at</dt>
-            <dd>{formatDate(delivery.assignedAt)}</dd>
-          </div>
-        )}
+        <div>
+          <dt>Requested by</dt>
+          <dd>{delivery.requestedTransporterId || '-'}</dd>
+        </div>
+        <div>
+          <dt>Requested at</dt>
+          <dd>{formatDateTime(delivery.assignmentRequestedAt)}</dd>
+        </div>
+        <div>
+          <dt>Assigned to</dt>
+          <dd>{delivery.assignedTransporterId || '-'}</dd>
+        </div>
+        <div>
+          <dt>Assigned at</dt>
+          <dd>{formatDateTime(delivery.assignedAt)}</dd>
+        </div>
       </dl>
 
       {isTransporter && !isAssigned && !hasPendingRequest && (
@@ -264,9 +238,7 @@ function DeliveryCard({
           This delivery is assigned to another transporter.
         </p>
       )}
-      {isTransporter && !isAdmin && actionError && (
-        <p className="error-text">{actionError}</p>
-      )}
+      {isTransporter && actionError && <p className="error-text">{actionError}</p>}
       {isTransporter && !isAdmin && actionStatus === 'success' && (
         <p className="success-text">Assignment request sent.</p>
       )}
@@ -361,7 +333,7 @@ function DeliveryCard({
           )}
         </>
       )}
-    </article>
+    </div>
   );
 }
 
@@ -369,6 +341,9 @@ export default function LogisticsPanel() {
   const { token, keycloak, isAdmin, isTransporter } = useAuth();
   const userId = keycloak.tokenParsed?.sub;
   const canView = isAdmin || isTransporter;
+
+  const [activeResource, setActiveResource] = useState('deliveries');
+  const [expandedDeliveryIds, setExpandedDeliveryIds] = useState([]);
 
   const [deliveries, setDeliveries] = useState([]);
   const [deliveryListStatus, setDeliveryListStatus] = useState('idle');
@@ -387,6 +362,11 @@ export default function LogisticsPanel() {
   const [warehouseSubmitError, setWarehouseSubmitError] = useState(null);
   const [warehouseActionStatus, setWarehouseActionStatus] = useState('idle');
   const [warehouseActionError, setWarehouseActionError] = useState(null);
+
+  const tabs = [
+    { id: 'deliveries', label: 'Deliveries' },
+    ...(isAdmin ? [{ id: 'warehouses', label: 'Warehouses' }] : []),
+  ];
 
   const loadDeliveries = useCallback(
     async (filters = {}) => {
@@ -448,6 +428,12 @@ export default function LogisticsPanel() {
     () => loadDeliveries(deliveryFilters),
     [deliveryFilters, loadDeliveries],
   );
+
+  const toggleDelivery = (id) => {
+    setExpandedDeliveryIds((current) =>
+      current.includes(id) ? current.filter((value) => value !== id) : [...current, id],
+    );
+  };
 
   const updateDeliveryField = (event) => {
     const { name, value } = event.target;
@@ -566,6 +552,87 @@ export default function LogisticsPanel() {
     return null;
   }
 
+  const deliveryColumns = [
+    { key: 'id', header: 'ID' },
+    { key: 'orderId', header: 'Order' },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (row) => <DeliveryStatusBadge status={row.status} />,
+    },
+    { key: 'destination', header: 'Destination' },
+    {
+      key: 'dispatchedAt',
+      header: 'Dispatched',
+      render: (row) => formatDateTime(row.dispatchedAt),
+    },
+    {
+      key: 'requestedTransporterId',
+      header: 'Requested by',
+      render: (row) => row.requestedTransporterId || '-',
+    },
+    {
+      key: 'assignedTransporterId',
+      header: 'Assigned to',
+      render: (row) => row.assignedTransporterId || '-',
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      className: 'cell-actions',
+      render: (row) => (
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={() => toggleDelivery(row.id)}
+        >
+          {expandedDeliveryIds.includes(row.id) ? 'Hide' : 'Details'}
+        </button>
+      ),
+    },
+  ];
+
+  const warehouseColumns = [
+    { key: 'id', header: 'ID' },
+    { key: 'name', header: 'Name' },
+    {
+      key: 'fridgeCapacity',
+      header: 'Fridge capacity',
+      render: (row) => formatAmount(row.fridgeCapacity),
+    },
+    {
+      key: 'normalCapacity',
+      header: 'Normal capacity',
+      render: (row) => formatAmount(row.normalCapacity),
+    },
+    { key: 'addressLocale', header: 'Address' },
+    {
+      key: 'actions',
+      header: 'Actions',
+      className: 'cell-actions',
+      render: (row) => (
+        <div className="table-actions">
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => handleEditWarehouse(row)}
+            disabled={warehouseActionStatus === 'loading'}
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            className="danger-button"
+            onClick={() => handleDeleteWarehouse(row)}
+            disabled={warehouseActionStatus === 'loading'}
+          >
+            Delete
+          </button>
+        </div>
+      ),
+    },
+  ];
+
   return (
     <section className="microservice-panel">
       <h2>Logistics service</h2>
@@ -576,137 +643,145 @@ export default function LogisticsPanel() {
       </p>
       <p className="muted">User ID: {userId ?? 'not available'}</p>
 
-      {isAdmin && (
-        <form onSubmit={handleCreateDelivery}>
-          <h3>Create delivery</h3>
-          <div className="form-grid">
-            <label>
-              Order ID
-              <input
-                name="orderId"
-                type="number"
-                min="1"
-                value={newDeliveryForm.orderId}
-                onChange={updateDeliveryField}
-                required
-              />
-            </label>
-            <label className="wide-field">
-              Destination
-              <input
-                name="destination"
-                value={newDeliveryForm.destination}
-                onChange={updateDeliveryField}
-                maxLength={255}
-                required
-              />
-            </label>
-          </div>
-          <div className="form-actions">
-            <button type="submit" disabled={createStatus === 'loading'}>
-              {createStatus === 'loading' ? 'Creating...' : 'Create delivery'}
-            </button>
-          </div>
-          {createStatus === 'error' && <p className="error-text">{createError}</p>}
-          {createStatus === 'success' && (
-            <p className="success-text">Delivery created.</p>
+      <ResourceTabs
+        tabs={tabs}
+        activeId={activeResource}
+        onChange={setActiveResource}
+        ariaLabel="Logistics resources"
+      />
+
+      {activeResource === 'deliveries' && (
+        <>
+          {isAdmin && (
+            <form onSubmit={handleCreateDelivery}>
+              <h3>Create delivery</h3>
+              <div className="form-grid">
+                <label>
+                  Order ID
+                  <input
+                    name="orderId"
+                    type="number"
+                    min="1"
+                    value={newDeliveryForm.orderId}
+                    onChange={updateDeliveryField}
+                    required
+                  />
+                </label>
+                <label className="wide-field">
+                  Destination
+                  <input
+                    name="destination"
+                    value={newDeliveryForm.destination}
+                    onChange={updateDeliveryField}
+                    maxLength={255}
+                    required
+                  />
+                </label>
+              </div>
+              <div className="form-actions">
+                <button type="submit" disabled={createStatus === 'loading'}>
+                  {createStatus === 'loading' ? 'Creating...' : 'Create delivery'}
+                </button>
+              </div>
+              {createStatus === 'error' && <p className="error-text">{createError}</p>}
+              {createStatus === 'success' && (
+                <p className="success-text">Delivery created.</p>
+              )}
+            </form>
           )}
-        </form>
+
+          <form onSubmit={handleFilterSubmit}>
+            <h3>Filter deliveries</h3>
+            <div className="form-grid">
+              <label>
+                Status
+                <select
+                  name="status"
+                  value={deliveryFilters.status}
+                  onChange={(event) =>
+                    setDeliveryFilters((current) => ({
+                      ...current,
+                      status: event.target.value,
+                    }))
+                  }
+                >
+                  <option value="">All statuses</option>
+                  {DELIVERY_STATUSES.map((option) => (
+                    <option key={option} value={option}>
+                      {formatStatus(option)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Order ID
+                <input
+                  name="orderId"
+                  type="number"
+                  min="1"
+                  value={deliveryFilters.orderId}
+                  onChange={(event) =>
+                    setDeliveryFilters((current) => ({
+                      ...current,
+                      orderId: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+            </div>
+            <div className="form-actions">
+              <button type="submit" disabled={deliveryListStatus === 'loading'}>
+                Apply filters
+              </button>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={handleClearFilters}
+                disabled={deliveryListStatus === 'loading'}
+              >
+                Clear filters
+              </button>
+            </div>
+          </form>
+
+          <div className="result-block">
+            <div className="reclamation-list-header">
+              <h3>{isAdmin ? 'All deliveries' : 'Deliveries'}</h3>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => loadDeliveries(deliveryFilters)}
+                disabled={deliveryListStatus === 'loading'}
+              >
+                Reload
+              </button>
+            </div>
+            <DataTable
+              columns={deliveryColumns}
+              rows={deliveries}
+              loading={deliveryListStatus === 'loading'}
+              error={deliveryListError}
+              emptyMessage="No deliveries match the current filters."
+              expandedRowKeys={expandedDeliveryIds}
+              renderExpandedRow={(delivery) => (
+                <DeliveryDetails
+                  delivery={delivery}
+                  isAdmin={isAdmin}
+                  isTransporter={isTransporter}
+                  userId={userId}
+                  token={token}
+                  keycloak={keycloak}
+                  onChanged={handleDeliveriesChanged}
+                />
+              )}
+              ariaLabel="Deliveries table"
+            />
+          </div>
+        </>
       )}
 
-      <form onSubmit={handleFilterSubmit}>
-        <h3>Filter deliveries</h3>
-        <div className="form-grid">
-          <label>
-            Status
-            <select
-              name="status"
-              value={deliveryFilters.status}
-              onChange={(event) =>
-                setDeliveryFilters((current) => ({
-                  ...current,
-                  status: event.target.value,
-                }))
-              }
-            >
-              <option value="">All statuses</option>
-              {DELIVERY_STATUSES.map((option) => (
-                <option key={option} value={option}>
-                  {formatStatus(option)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Order ID
-            <input
-              name="orderId"
-              type="number"
-              min="1"
-              value={deliveryFilters.orderId}
-              onChange={(event) =>
-                setDeliveryFilters((current) => ({
-                  ...current,
-                  orderId: event.target.value,
-                }))
-              }
-            />
-          </label>
-        </div>
-        <div className="form-actions">
-          <button type="submit" disabled={deliveryListStatus === 'loading'}>
-            Apply filters
-          </button>
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={handleClearFilters}
-            disabled={deliveryListStatus === 'loading'}
-          >
-            Clear filters
-          </button>
-        </div>
-      </form>
-
-      <div className="result-block">
-        <div className="reclamation-list-header">
-          <h3>{isAdmin ? 'All deliveries' : 'Deliveries'}</h3>
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={() => loadDeliveries(deliveryFilters)}
-            disabled={deliveryListStatus === 'loading'}
-          >
-            Reload
-          </button>
-        </div>
-        {deliveryListStatus === 'loading' && <p>Loading deliveries...</p>}
-        {deliveryListStatus === 'error' && (
-          <p className="error-text">{deliveryListError}</p>
-        )}
-        {deliveryListStatus === 'success' && deliveries.length === 0 && (
-          <p className="muted">No deliveries match the current filters.</p>
-        )}
-        {deliveryListStatus === 'success' && deliveries.length > 0 && (
-          <div className="delivery-list">
-            {deliveries.map((delivery) => (
-              <DeliveryCard
-                key={delivery.id}
-                delivery={delivery}
-                isAdmin={isAdmin}
-                isTransporter={isTransporter}
-                userId={userId}
-                token={token}
-                keycloak={keycloak}
-                onChanged={handleDeliveriesChanged}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-
-      {isAdmin && (
-        <div className="result-block">
+      {activeResource === 'warehouses' && isAdmin && (
+        <>
           <h3>{editingWarehouseId === null ? 'Create warehouse' : 'Edit warehouse'}</h3>
           <form onSubmit={handleWarehouseSubmit}>
             <div className="form-grid">
@@ -794,66 +869,22 @@ export default function LogisticsPanel() {
                 Reload
               </button>
             </div>
-            {warehouseListStatus === 'loading' && <p>Loading warehouses...</p>}
-            {warehouseListStatus === 'error' && (
-              <p className="error-text">{warehouseListError}</p>
-            )}
-            {warehouseListStatus === 'success' && warehouses.length === 0 && (
-              <p className="muted">No warehouses yet.</p>
-            )}
             {warehouseActionError && (
               <p className="error-text">{warehouseActionError}</p>
             )}
             {warehouseActionStatus === 'success' && (
               <p className="success-text">Warehouse deleted.</p>
             )}
-            {warehouseListStatus === 'success' && warehouses.length > 0 && (
-              <div className="warehouse-list">
-                {warehouses.map((warehouse) => (
-                  <article className="warehouse-item" key={warehouse.id}>
-                    <div className="delivery-header">
-                      <h3>
-                        #{warehouse.id} · {warehouse.name}
-                      </h3>
-                    </div>
-                    <dl className="warehouse-meta">
-                      <div>
-                        <dt>Fridge capacity</dt>
-                        <dd>{warehouse.fridgeCapacity}</dd>
-                      </div>
-                      <div>
-                        <dt>Normal capacity</dt>
-                        <dd>{warehouse.normalCapacity}</dd>
-                      </div>
-                      <div>
-                        <dt>Address</dt>
-                        <dd>{warehouse.addressLocale}</dd>
-                      </div>
-                    </dl>
-                    <div className="delivery-actions">
-                      <button
-                        type="button"
-                        className="secondary-button"
-                        onClick={() => handleEditWarehouse(warehouse)}
-                        disabled={warehouseActionStatus === 'loading'}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        className="danger-button"
-                        onClick={() => handleDeleteWarehouse(warehouse)}
-                        disabled={warehouseActionStatus === 'loading'}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
+            <DataTable
+              columns={warehouseColumns}
+              rows={warehouses}
+              loading={warehouseListStatus === 'loading'}
+              error={warehouseListError}
+              emptyMessage="No warehouses found."
+              ariaLabel="Warehouses table"
+            />
           </div>
-        </div>
+        </>
       )}
     </section>
   );

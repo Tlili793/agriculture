@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../auth/LoginController';
 import { createOrder, fetchOrder, fetchUserOrders } from '../api/ordering';
+import DataTable from './DataTable';
+import { formatAmount, formatDateTime, formatStatus } from '../utils/format';
 
 const EMPTY_ORDER_FORM = {
   productId: '1',
@@ -8,8 +10,34 @@ const EMPTY_ORDER_FORM = {
   unitPrice: '10.00',
 };
 
-function Result({ value }) {
-  return <pre>{JSON.stringify(value, null, 2)}</pre>;
+const ITEM_COLUMNS = [
+  { key: 'id', header: 'Item ID' },
+  { key: 'productId', header: 'Product ID' },
+  { key: 'quantity', header: 'Quantity' },
+  {
+    key: 'unitPrice',
+    header: 'Unit price',
+    render: (item) => formatAmount(item.unitPrice),
+  },
+  {
+    key: 'lineTotal',
+    header: 'Line total',
+    render: (item) => formatAmount(Number(item.quantity) * Number(item.unitPrice)),
+  },
+];
+
+function OrderItems({ items }) {
+  return (
+    <div className="nested-table-block">
+      <h4>Order items</h4>
+      <DataTable
+        columns={ITEM_COLUMNS}
+        rows={items ?? []}
+        emptyMessage="This order has no items."
+        ariaLabel="Order items table"
+      />
+    </div>
+  );
 }
 
 export default function OrderingPanel() {
@@ -18,26 +46,59 @@ export default function OrderingPanel() {
   const [orderForm, setOrderForm] = useState(EMPTY_ORDER_FORM);
   const [createStatus, setCreateStatus] = useState('idle');
   const [createError, setCreateError] = useState(null);
-  const [createdOrder, setCreatedOrder] = useState(null);
 
-  const [lookupId, setLookupId] = useState('1');
+  const [orders, setOrders] = useState([]);
+  const [listStatus, setListStatus] = useState('idle');
+  const [listError, setListError] = useState(null);
+  const [expandedOrderIds, setExpandedOrderIds] = useState([]);
+
+  const [lookupId, setLookupId] = useState('');
   const [lookupStatus, setLookupStatus] = useState('idle');
   const [lookupError, setLookupError] = useState(null);
   const [lookupResult, setLookupResult] = useState(null);
 
-  const [listStatus, setListStatus] = useState('idle');
-  const [listError, setListError] = useState(null);
-  const [userOrders, setUserOrders] = useState(null);
+  const loadOrders = useCallback(async () => {
+    setListError(null);
+
+    if (!userId) {
+      setListError('The authenticated user does not have a Keycloak subject.');
+      setListStatus('error');
+      return;
+    }
+
+    setListStatus('loading');
+
+    try {
+      const result = await fetchUserOrders({ token, keycloak, userId });
+      setOrders(result ?? []);
+      setListStatus('success');
+    } catch (failure) {
+      setListError(failure.message);
+      setListStatus('error');
+    }
+  }, [keycloak, token, userId]);
+
+  useEffect(() => {
+    if (token) {
+      loadOrders();
+    }
+  }, [token, loadOrders]);
 
   const updateOrderField = (event) => {
     const { name, value } = event.target;
     setOrderForm((current) => ({ ...current, [name]: value }));
   };
 
+  const toggleOrder = (id) => {
+    setExpandedOrderIds((current) =>
+      current.includes(id) ? current.filter((value) => value !== id) : [...current, id],
+    );
+  };
+
   const handleCreateOrder = async (event) => {
     event.preventDefault();
     setCreateError(null);
-    setCreatedOrder(null);
+    setCreateStatus('loading');
 
     if (!userId) {
       setCreateError('The authenticated user does not have a Keycloak subject.');
@@ -45,10 +106,8 @@ export default function OrderingPanel() {
       return;
     }
 
-    setCreateStatus('loading');
-
     try {
-      const result = await createOrder({
+      await createOrder({
         token,
         keycloak,
         order: {
@@ -62,10 +121,11 @@ export default function OrderingPanel() {
           ],
         },
       });
-      setCreatedOrder(result);
+      setOrderForm(EMPTY_ORDER_FORM);
       setCreateStatus('success');
-    } catch (createFailure) {
-      setCreateError(createFailure.message);
+      await loadOrders();
+    } catch (failure) {
+      setCreateError(failure.message);
       setCreateStatus('error');
     }
   };
@@ -80,34 +140,50 @@ export default function OrderingPanel() {
       const result = await fetchOrder({ token, keycloak, id: lookupId });
       setLookupResult(result);
       setLookupStatus('success');
-    } catch (lookupFailure) {
-      setLookupError(lookupFailure.message);
+    } catch (failure) {
+      setLookupError(failure.message);
       setLookupStatus('error');
     }
   };
 
-  const handleListUserOrders = async (event) => {
-    event.preventDefault();
-    setListError(null);
-    setUserOrders(null);
-
-    if (!userId) {
-      setListError('The authenticated user does not have a Keycloak subject.');
-      setListStatus('error');
-      return;
-    }
-
-    setListStatus('loading');
-
-    try {
-      const result = await fetchUserOrders({ token, keycloak, userId });
-      setUserOrders(result);
-      setListStatus('success');
-    } catch (listFailure) {
-      setListError(listFailure.message);
-      setListStatus('error');
-    }
-  };
+  const columns = [
+    { key: 'id', header: 'Order ID' },
+    {
+      key: 'orderDate',
+      header: 'Order date',
+      render: (row) => formatDateTime(row.orderDate),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (row) => formatStatus(row.status),
+    },
+    {
+      key: 'totalAmount',
+      header: 'Total',
+      render: (row) => formatAmount(row.totalAmount),
+    },
+    {
+      key: 'items',
+      header: 'Items',
+      render: (row) => row.items?.length ?? 0,
+    },
+    { key: 'userId', header: 'User ID' },
+    {
+      key: 'actions',
+      header: 'Actions',
+      className: 'cell-actions',
+      render: (row) => (
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={() => toggleOrder(row.id)}
+        >
+          {expandedOrderIds.includes(row.id) ? 'Hide items' : 'View items'}
+        </button>
+      ),
+    },
+  ];
 
   return (
     <section className="microservice-panel">
@@ -162,12 +238,7 @@ export default function OrderingPanel() {
           </button>
         </div>
         {createStatus === 'error' && <p className="error-text">{createError}</p>}
-        {createStatus === 'success' && createdOrder && (
-          <div className="result-block">
-            <h3>Created order</h3>
-            <Result value={createdOrder} />
-          </div>
-        )}
+        {createStatus === 'success' && <p className="success-text">Order created.</p>}
       </form>
 
       <form onSubmit={handleLookupOrder}>
@@ -192,27 +263,42 @@ export default function OrderingPanel() {
         {lookupStatus === 'error' && <p className="error-text">{lookupError}</p>}
         {lookupStatus === 'success' && lookupResult && (
           <div className="result-block">
-            <h3>Order details</h3>
-            <Result value={lookupResult} />
+            <h3>Order #{lookupResult.id}</h3>
+            <DataTable
+              columns={columns}
+              rows={[lookupResult]}
+              loading={false}
+              expandedRowKeys={expandedOrderIds}
+              renderExpandedRow={(row) => <OrderItems items={row.items} />}
+              ariaLabel="Looked up order table"
+            />
           </div>
         )}
       </form>
 
-      <form onSubmit={handleListUserOrders}>
-        <h3>List my orders</h3>
-        <div className="form-actions">
-          <button type="submit" disabled={listStatus === 'loading'}>
-            {listStatus === 'loading' ? 'Loading...' : 'List orders'}
+      <div className="result-block">
+        <div className="reclamation-list-header">
+          <h3>My orders</h3>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={loadOrders}
+            disabled={listStatus === 'loading'}
+          >
+            Reload
           </button>
         </div>
-        {listStatus === 'error' && <p className="error-text">{listError}</p>}
-        {listStatus === 'success' && userOrders && (
-          <div className="result-block">
-            <h3>User orders</h3>
-            <Result value={userOrders} />
-          </div>
-        )}
-      </form>
+        <DataTable
+          columns={columns}
+          rows={orders}
+          loading={listStatus === 'loading'}
+          error={listError}
+          emptyMessage="No orders found for this user."
+          expandedRowKeys={expandedOrderIds}
+          renderExpandedRow={(row) => <OrderItems items={row.items} />}
+          ariaLabel="My orders table"
+        />
+      </div>
     </section>
   );
 }

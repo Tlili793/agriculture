@@ -319,10 +319,22 @@ Key environment variables (see `frontend/.env.example`):
 | `VITE_RECLAMATIONS_ENDPOINT` | `/api/reclamations` |
 | `VITE_LOGISTICS_DELIVERIES_ENDPOINT` | `/api/deliveries` |
 | `VITE_LOGISTICS_WAREHOUSES_ENDPOINT` | `/api/warehouses` |
+| `VITE_MARKETPLACE_ENDPOINT` | `/api/marketplace/listings` |
 
 The frontend requires a successful Keycloak login before rendering the
-authenticated application shell. Gateway authorization is still the current
-security limitation described above.
+authenticated application shell. After login, the main page shows a service
+selector and renders only the selected service panel: Refrigerator, Ordering,
+Reclamations, Marketplace, and Logistics for admins/transporters.
+
+Resource panels use tables for every exposed backend resource:
+
+- Refrigerator: fruits, vegetables, meals, and monthly budgets.
+- Ordering: the authenticated user's orders with expandable order items.
+- Reclamations: consumer/admin list, status updates, and delete actions.
+- Marketplace: all listings with owner-only edit/delete actions.
+- Logistics: deliveries with expandable controls and separate warehouses.
+
+Gateway authorization is still the current security limitation described above.
 
 ## Running the stack
 
