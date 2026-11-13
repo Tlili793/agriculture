@@ -144,7 +144,7 @@ Prerequisites: Java 17, Maven, a running Eureka server, and RabbitMQ.
 From the repository root:
 
 ```bash
-mvn -f microservices/ordering-service/pom.xml spring-boot:run
+mvn -f backend/microservices/ordering-service/pom.xml spring-boot:run
 ```
 
 From the service directory:
@@ -172,7 +172,7 @@ docker compose up --build
 ## Testing
 
 ```bash
-mvn -f microservices/ordering-service/pom.xml test
+mvn -f backend/microservices/ordering-service/pom.xml test
 ```
 
 ## Error responses

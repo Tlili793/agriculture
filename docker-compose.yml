@@ -88,7 +88,7 @@ services:
 
   refrigerator-service:
     build:
-      context: ./microservices/refrigerator-service
+      context: ./backend/microservices/refrigerator-service
       dockerfile: Dockerfile
     container_name: agriculture-refrigerator-service
     environment:
@@ -113,7 +113,7 @@ services:
 
   ordering-service:
     build:
-      context: ./microservices/ordering-service
+      context: ./backend/microservices/ordering-service
       dockerfile: Dockerfile
     container_name: agriculture-ordering-service
     environment:
@@ -136,7 +136,7 @@ services:
 
   reclamation-service:
     build:
-      context: ./microservices/reclamation-service
+      context: ./backend/microservices/reclamation-service
       dockerfile: Dockerfile
     container_name: agriculture-reclamation-service
     environment:
@@ -162,7 +162,7 @@ services:
 
   logistics-service:
     build:
-      context: ./microservices/ms_logistics
+      context: ./backend/microservices/ms_logistics
       dockerfile: Dockerfile
     container_name: agriculture-logistics-service
     environment:
@@ -189,7 +189,7 @@ services:
 
   marketplace-service:
     build:
-      context: ./microservices/marketplace
+      context: ./backend/microservices/marketplace
       dockerfile: Dockerfile
     container_name: agriculture-marketplace-service
     environment:

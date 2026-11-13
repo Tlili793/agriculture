@@ -34,3 +34,9 @@ eureka:
 logging:
   level:
     com.workshop.ordering: INFO
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html

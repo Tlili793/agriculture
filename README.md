@@ -100,13 +100,13 @@ a local environment.
 │   ├── src/main/resources/application.yaml   # Routes and OAuth2 configuration
 │   ├── eureka-server/                        # Eureka registry
 │   ├── keycloak/realm-export.json            # Keycloak import
+│   ├── microservices/
+│   │   ├── refrigerator-service/
+│   │   ├── ordering-service/
+│   │   ├── reclamation-service/
+│   │   ├── ms_logistics/                     # Logistics service module
+│   │   └── marketplace/
 │   └── docker-compose.infra.yml              # Keycloak/Postgres/Eureka only
-├── microservices/
-│   ├── refrigerator-service/
-│   ├── ordering-service/
-│   ├── reclamation-service/
-│   ├── ms_logistics/                         # Logistics service module
-│   └── marketplace/
 ├── frontend/                                 # React + Vite + keycloak-js
 ├── docker-compose.yml                        # Full platform
 └── README.md

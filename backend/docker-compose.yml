@@ -84,7 +84,7 @@ services:
 
   refrigerator-service:
     build:
-      context: ./refrigerator-service
+      context: ./microservices/refrigerator-service
       dockerfile: Dockerfile
     container_name: agriculture-refrigerator-service
     environment:
