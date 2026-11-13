@@ -11,6 +11,7 @@ mvn spring-boot:run
 ```
 
 Swagger: http://localhost:8086/swagger-ui.html
+Unified Swagger: http://localhost:8081/swagger-ui.html (select **Reclamation Service**)
 (Errors about Eureka 8761 / Config 8888 are normal while they are not running.)
 
 The service registers with Eureka as `reclamation-service`. Through the gateway it

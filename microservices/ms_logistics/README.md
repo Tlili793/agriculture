@@ -23,6 +23,7 @@ mvn spring-boot:run
 ```
 
 - Swagger UI: http://localhost:8087/swagger-ui.html
+- Unified Swagger UI: http://localhost:8081/swagger-ui.html (select **Logistics Service**)
 - OpenAPI JSON: http://localhost:8087/v3/api-docs
 - Hello endpoint: http://localhost:8087/api/logistics/hi -> `Hi, from Ines`
 

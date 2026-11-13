@@ -55,6 +55,7 @@ class LogisticsApiIntegrationTest {
         mvc.perform(get("/v3/api-docs"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.info.title").value("Logistics Microservice API"))
+                .andExpect(jsonPath("$.servers[0].url").value("/"))
                 .andExpect(jsonPath("$.paths['/api/logistics/hi']").exists())
                 .andExpect(jsonPath("$.paths['/api/deliveries']").exists())
                 .andExpect(jsonPath("$.paths['/api/warehouses']").exists());
